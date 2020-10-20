@@ -130,6 +130,7 @@ typedef struct context {
     u32 eventid;
     s64 retval;
     u8 argnum;
+    u32 user_stack;
 } context_t;
 
 typedef struct args {
@@ -200,6 +201,7 @@ BPF_PERCPU_ARRAY(bufs_off, u32, MAX_BUFFERS);       // Holds offsets to bufs res
 BPF_PROG_ARRAY(prog_array, MAX_TAIL_CALL);          // Used to store programs for tail calls
 BPF_PROG_ARRAY(sys_enter_tails, MAX_EVENT_ID);      // Used to store programs for tail calls
 BPF_PROG_ARRAY(sys_exit_tails, MAX_EVENT_ID);       // Used to store programs for tail calls
+BPF_STACK_TRACE(stack_traces, 1024);                // Used to store stack traces
 
 /*================================== EVENTS ====================================*/
 
@@ -512,6 +514,7 @@ static __always_inline int init_context(context_t *context)
 
     // Save timestamp in microsecond resolution
     context->ts = bpf_ktime_get_ns()/1000;
+    context->user_stack = 0;
 
     return 0;
 }
@@ -549,6 +552,24 @@ static __always_inline context_t init_and_save_context(buf_t *submit_p, u32 id, 
     context.eventid = id;
     context.argnum = argnum;
     context.retval = ret;
+    save_context_to_buf(submit_p, (void*)&context);
+
+    return context;
+}
+
+static __always_inline context_t init_and_save_context_ctx(void* ctx, buf_t *submit_p, u32 id, u8 argnum, long ret)
+{
+    context_t context = {};
+    init_context(&context);
+    context.eventid = id;
+    context.argnum = argnum;
+    context.retval = ret;
+
+    // Get Stack trace
+    // u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_USER_STACK);
+    u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_USER_STACK);
+    context.user_stack = user_stack;
+
     save_context_to_buf(submit_p, (void*)&context);
 
     return context;
@@ -1273,7 +1294,7 @@ int syscall__execve(void *ctx)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SYS_EXECVE, 2 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, SYS_EXECVE, 2 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = params_names_map.lookup(&context.eventid);
     if (!tags) {

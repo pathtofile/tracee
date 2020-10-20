@@ -728,6 +728,47 @@ func (t *Tracee) shouldPrintEvent(e RawEvent) bool {
 }
 
 func (t *Tracee) prepareArgsForPrint(ctx *context, args map[argTag]interface{}) error {
+	// Get UserStack and print it
+	if ctx.UserStack != 0 {
+		fmt.Print("\n-------------------------------------\n")
+		bs := make([]byte, 4)
+		binary.LittleEndian.PutUint32(bs, ctx.UserStack)
+		user_stack := binary.BigEndian.Uint32(bs)
+		fmt.Printf("    Stack ID: %d\n", user_stack)
+
+		// Try to find stack
+		stackTable := bpf.NewTable(t.bpfModule.TableId("stack_traces"), t.bpfModule)
+		iter := stackTable.Iter()
+		for iter.Next() {
+			key, leaf := iter.Key(), iter.Leaf()
+			keyStr, err := stackTable.KeyBytesToStr(key)
+			if err != nil {
+				fmt.Printf("   ERROR: cannot print value: %v", err)
+				fmt.Printf("    KEY: %T\n", key)
+			} else {
+				fmt.Printf("    KEY: %s\n", keyStr)
+			}
+			leafStr, err := stackTable.LeafBytesToStr(leaf)
+			if err != nil {
+				fmt.Printf("   ERROR: cannot print value: %v", err)
+				fmt.Printf("    VAL: %T\n", leaf)
+			} else {
+				fmt.Printf("    VAL: %s\n", leafStr)
+			}
+		}
+
+		// key := make([]byte, 4)
+		// binary.BigEndian.PutUint32(key, ctx.UserStack)
+		// val, err := stackTable.Get(key)
+		// if err != nil {
+		// 	// t is being closed internally
+		// 	fmt.Printf("    Error: %v\n", err)
+		// } else {
+		// 	fmt.Printf("    Val Type: %T\n", val)
+		// }
+		fmt.Print("-------------------------------------\n")
+	}
+
 	for key, arg := range args {
 		if ptr, isUintptr := arg.(uintptr); isUintptr {
 			args[key] = fmt.Sprintf("0x%X", ptr)
@@ -823,22 +864,23 @@ func (t *Tracee) prepareArgsForPrint(ctx *context, args map[argTag]interface{}) 
 // context struct contains common metadata that is collected for all types of events
 // it is used to unmarshal binary data and therefore should match (bit by bit) to the `context_t` struct in the ebpf code.
 type context struct {
-	Ts       uint64
-	Pid      uint32
-	Tid      uint32
-	Ppid     uint32
-	HostPid  uint32
-	HostTid  uint32
-	HostPpid uint32
-	Uid      uint32
-	MntID    uint32
-	PidID    uint32
-	Comm     [16]byte
-	UtsName  [16]byte
-	EventID  int32
-	Retval   int64
-	Argnum   uint8
-	_        [7]byte //padding
+	Ts        uint64
+	Pid       uint32
+	Tid       uint32
+	Ppid      uint32
+	HostPid   uint32
+	HostTid   uint32
+	HostPpid  uint32
+	Uid       uint32
+	MntID     uint32
+	PidID     uint32
+	Comm      [16]byte
+	UtsName   [16]byte
+	EventID   int32
+	Retval    int64
+	Argnum    uint8
+	UserStack uint32
+	_         [3]byte //padding
 }
 
 func (t *Tracee) processLostEvents() {
