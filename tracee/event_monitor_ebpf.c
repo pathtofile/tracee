@@ -567,7 +567,7 @@ static __always_inline context_t init_and_save_context_ctx(void* ctx, buf_t *sub
 
     // Get Stack trace
     // u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_USER_STACK);
-    u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_USER_STACK);
+    u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK);
     context.user_stack = user_stack;
 
     save_context_to_buf(submit_p, (void*)&context);
@@ -1055,7 +1055,7 @@ static __always_inline int trace_ret_generic(void *ctx, u32 id, u64 types, u64 t
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
     u8 argnum = save_args_to_submit_buf(types, tags, args);
-    init_and_save_context(submit_p, id, argnum, ret);
+    init_and_save_context_ctx(ctx, submit_p, id, argnum, ret);
 
     events_perf_submit(ctx);
     return 0;
@@ -1155,7 +1155,7 @@ struct bpf_raw_tracepoint_args *ctx
             return 0;
         set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-        context_t context = init_and_save_context(submit_p, RAW_SYS_ENTER, 1 /*argnum*/, 0 /*ret*/);
+        context_t context = init_and_save_context_ctx(ctx, submit_p, RAW_SYS_ENTER, 1 /*argnum*/, 0 /*ret*/);
 
         u64 *tags = params_names_map.lookup(&context.eventid);
         if (!tags) {
@@ -1233,7 +1233,7 @@ struct bpf_raw_tracepoint_args *ctx
             return 0;
         set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-        context_t context = init_and_save_context(submit_p, RAW_SYS_EXIT, 1 /*argnum*/, ret);
+        context_t context = init_and_save_context_ctx(ctx, submit_p, RAW_SYS_EXIT, 1 /*argnum*/, ret);
 
         u64 *tags = params_names_map.lookup(&context.eventid);
         if (!tags) {
@@ -1329,7 +1329,7 @@ int syscall__execveat(void *ctx)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SYS_EXECVEAT, 4 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, SYS_EXECVEAT, 4 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = params_names_map.lookup(&context.eventid);
     if (!tags) {
@@ -1362,7 +1362,7 @@ int trace_do_exit(struct pt_regs *ctx, long code)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    init_and_save_context(submit_p, DO_EXIT, 0, code);
+    init_and_save_context_ctx(ctx, submit_p, DO_EXIT, 0, code);
 
     if (get_config(CONFIG_MODE) == MODE_CONTAINER_NEW)
         remove_pid_ns_if_needed();
@@ -1383,7 +1383,7 @@ int trace_security_bprm_check(struct pt_regs *ctx, struct linux_binprm *bprm)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SECURITY_BPRM_CHECK, 3 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, SECURITY_BPRM_CHECK, 3 /*argnum*/, 0 /*ret*/);
 
     struct file* file = get_file_ptr_from_bprm(bprm);
     dev_t s_dev = get_dev_from_file(file);
@@ -1421,7 +1421,7 @@ int trace_security_file_open(struct pt_regs *ctx, struct file *file)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SECURITY_FILE_OPEN, 4 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, SECURITY_FILE_OPEN, 4 /*argnum*/, 0 /*ret*/);
 
     dev_t s_dev = get_dev_from_file(file);
     unsigned long inode_nr = get_inode_nr_from_file(file);
@@ -1467,7 +1467,7 @@ int trace_cap_capable(struct pt_regs *ctx, const struct cred *cred,
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, CAP_CAPABLE, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, CAP_CAPABLE, 1 /*argnum*/, 0 /*ret*/);
 
   #ifdef CAP_OPT_NONE
     audit = (cap_opt & 0b10) == 0;
@@ -1678,7 +1678,7 @@ static __always_inline int do_vfs_write_writev_tail(struct pt_regs *ctx, u32 eve
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, event_id, 5 /*argnum*/, PT_REGS_RC(ctx));
+    context_t context = init_and_save_context_ctx(ctx, submit_p, event_id, 5 /*argnum*/, PT_REGS_RC(ctx));
 
     bool delete_args = true;
     if (load_args(&saved_args, delete_args, event_id) != 0) {
@@ -1806,7 +1806,7 @@ int trace_mmap_alert(struct pt_regs *ctx)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = params_names_map.lookup(&context.eventid);
     if (!tags) {
@@ -1848,7 +1848,7 @@ int trace_mprotect_alert(struct pt_regs *ctx, struct vm_area_struct *vma, unsign
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context_ctx(ctx, submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = params_names_map.lookup(&context.eventid);
     if (!tags) {

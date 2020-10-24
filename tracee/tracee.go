@@ -734,14 +734,16 @@ func (t *Tracee) prepareArgsForPrint(ctx *context, args map[argTag]interface{}) 
 		bs := make([]byte, 4)
 		binary.LittleEndian.PutUint32(bs, ctx.UserStack)
 		user_stack := binary.BigEndian.Uint32(bs)
-		fmt.Printf("    Stack ID: %d\n", user_stack)
+		fmt.Printf("    Stack ID: 0x%x\n", user_stack)
 
 		// Try to find stack
 		stackTable := bpf.NewTable(t.bpfModule.TableId("stack_traces"), t.bpfModule)
 		iter := stackTable.Iter()
+		
 		for iter.Next() {
 			key, leaf := iter.Key(), iter.Leaf()
 			keyStr, err := stackTable.KeyBytesToStr(key)
+			fmt.Printf("    KEYLen: %d\n", len(key))
 			if err != nil {
 				fmt.Printf("   ERROR: cannot print value: %v", err)
 				fmt.Printf("    KEY: %T\n", key)
