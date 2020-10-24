@@ -734,40 +734,32 @@ func (t *Tracee) prepareArgsForPrint(ctx *context, args map[argTag]interface{}) 
 		bs := make([]byte, 4)
 		binary.LittleEndian.PutUint32(bs, ctx.UserStack)
 		user_stack := binary.BigEndian.Uint32(bs)
-		fmt.Printf("    Stack ID: 0x%x\n", user_stack)
+		fmt.Printf("Stack ID: 0x%x\n", user_stack)
 
 		// Try to find stack
 		stackTable := bpf.NewTable(t.bpfModule.TableId("stack_traces"), t.bpfModule)
 		iter := stackTable.Iter()
-		
+		foundKey := false
 		for iter.Next() {
-			key, leaf := iter.Key(), iter.Leaf()
-			keyStr, err := stackTable.KeyBytesToStr(key)
-			fmt.Printf("    KEYLen: %d\n", len(key))
-			if err != nil {
-				fmt.Printf("   ERROR: cannot print value: %v", err)
-				fmt.Printf("    KEY: %T\n", key)
-			} else {
-				fmt.Printf("    KEY: %s\n", keyStr)
-			}
-			leafStr, err := stackTable.LeafBytesToStr(leaf)
-			if err != nil {
-				fmt.Printf("   ERROR: cannot print value: %v", err)
-				fmt.Printf("    VAL: %T\n", leaf)
-			} else {
-				fmt.Printf("    VAL: %s\n", leafStr)
+			mapKey, addrBytes := iter.Key(), iter.Leaf()
+			if uint32(mapKey[0]) == user_stack {
+				foundKey = true
+				stepCount := strconv.IntSize / 8
+				fmt.Printf("Stack Addrs: ")
+				for i:=0; i<len(addrBytes); i+= stepCount {
+					addr := binary.LittleEndian.Uint64(addrBytes[i:i+stepCount])
+					if addr == 0 {
+						break
+					}
+					fmt.Printf("0x%x ", addr)
+				}
+				fmt.Printf("\n")
 			}
 		}
+		if !foundKey {
+			fmt.Printf("ERROR: Didn't find key\n")
+		}
 
-		// key := make([]byte, 4)
-		// binary.BigEndian.PutUint32(key, ctx.UserStack)
-		// val, err := stackTable.Get(key)
-		// if err != nil {
-		// 	// t is being closed internally
-		// 	fmt.Printf("    Error: %v\n", err)
-		// } else {
-		// 	fmt.Printf("    Val Type: %T\n", val)
-		// }
 		fmt.Print("-------------------------------------\n")
 	}
 

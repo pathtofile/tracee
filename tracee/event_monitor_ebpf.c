@@ -566,7 +566,6 @@ static __always_inline context_t init_and_save_context_ctx(void* ctx, buf_t *sub
     context.retval = ret;
 
     // Get Stack trace
-    // u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_USER_STACK);
     u32 user_stack = stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK);
     context.user_stack = user_stack;
 
