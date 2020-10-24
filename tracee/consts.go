@@ -26,7 +26,7 @@ const (
 type binType uint8
 
 const (
-	ModeProcessAll uint32 = iota
+	ModeProcessAll uint32 = iota + 1
 	ModeProcessNew
 	ModeProcessList
 	ModeContainerAll

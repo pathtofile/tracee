@@ -91,11 +91,11 @@
 #define CONFIG_EXTRACT_DYN_CODE 4
 #define CONFIG_TRACEE_PID       5
 
-#define MODE_PROCESS_ALL        0
-#define MODE_PROCESS_NEW        1
-#define MODE_PROCESS_LIST       2
-#define MODE_CONTAINER_ALL      3
-#define MODE_CONTAINER_NEW      4
+#define MODE_PROCESS_ALL        1
+#define MODE_PROCESS_NEW        2
+#define MODE_PROCESS_LIST       3
+#define MODE_CONTAINER_ALL      4
+#define MODE_CONTAINER_NEW      5
 
 // re-define container_of as bcc complains
 #define my_container_of(ptr, type, member) ({          \
@@ -790,8 +790,10 @@ static __always_inline int save_file_path_to_str_buf(buf_t *string_p, struct fil
         unsigned int off = buf_off - len;
         // Is string buffer big enough for dentry name?
         int sz = 0;
-        if (off <= MAX_PERCPU_BUFSIZE - MAX_STRING_SIZE)
-            sz = bpf_probe_read_str(&(string_p->buf[off]), len, (void *)d_name.name);
+        if (off <= buf_off) { // verify no wrap occured
+            len = ((len - 1) & ((MAX_PERCPU_BUFSIZE >> 1)-1)) + 1;
+            sz = bpf_probe_read_str(&(string_p->buf[off & ((MAX_PERCPU_BUFSIZE >> 1)-1)]), len, (void *)d_name.name);
+        }
         else
             break;
         if (sz > 1) {
@@ -832,7 +834,7 @@ static __always_inline int events_perf_submit(void *ctx)
         return -1;
 
     /* satisfy validator by setting buffer bounds */
-    int size = *off & (MAX_PERCPU_BUFSIZE-1);
+    int size = ((*off - 1) & (MAX_PERCPU_BUFSIZE-1)) + 1;
     void * data = submit_p->buf;
     return events.perf_submit(ctx, data, size);
 }
@@ -1505,7 +1507,6 @@ int send_bin(struct pt_regs *ctx)
 
     int i = 0;
     unsigned int chunk_size;
-
     u64 id = bpf_get_current_pid_tgid();
 
     bin_args_t *bin_args = bin_args_map.lookup(&id);
@@ -1541,7 +1542,7 @@ int send_bin(struct pt_regs *ctx)
 #define F_SZ_OFF      (F_META_OFF + SEND_META_SIZE)
 #define F_POS_OFF     (F_SZ_OFF + sizeof(unsigned int))
 #define F_CHUNK_OFF   (F_POS_OFF + sizeof(off_t))
-#define F_CHUNK_SIZE  (MAX_PERCPU_BUFSIZE - F_CHUNK_OFF - 4)
+#define F_CHUNK_SIZE  (MAX_PERCPU_BUFSIZE >> 1)
 
     bpf_probe_read((void **)&(file_buf_p->buf[F_SEND_TYPE]), sizeof(u8), &bin_args->type);
 
@@ -1587,12 +1588,13 @@ int send_bin(struct pt_regs *ctx)
     }
 
     // Save last chunk
+    chunk_size = ((chunk_size - 1) & ((MAX_PERCPU_BUFSIZE >> 1) - 1)) + 1;
     bpf_probe_read((void **)&(file_buf_p->buf[F_CHUNK_OFF]), chunk_size, bin_args->ptr);
     bpf_probe_read((void **)&(file_buf_p->buf[F_SZ_OFF]), sizeof(unsigned int), &chunk_size);
     bpf_probe_read((void **)&(file_buf_p->buf[F_POS_OFF]), sizeof(off_t), &bin_args->start_off);
 
     // Satisfy validator by setting buffer bounds
-    int size = (F_CHUNK_OFF+chunk_size) & (MAX_PERCPU_BUFSIZE - 1);
+    int size = ((F_CHUNK_OFF+chunk_size-1) & (MAX_PERCPU_BUFSIZE - 1)) + 1;
     file_writes.perf_submit(ctx, data, size);
 
     // We finished writing an element of the vector - continue to next element
