@@ -111,17 +111,18 @@
 #define SCHED_PROCESS_EXIT    345
 #define MAX_EVENT_ID          346
 
-#define CONFIG_MODE             0
-#define CONFIG_SHOW_SYSCALL     1
-#define CONFIG_EXEC_ENV         2
-#define CONFIG_CAPTURE_FILES    3
-#define CONFIG_EXTRACT_DYN_CODE 4
-#define CONFIG_TRACEE_PID       5
-#define CONFIG_UID_FILTER       6
-#define CONFIG_MNT_NS_FILTER    7
-#define CONFIG_PID_NS_FILTER    8
-#define CONFIG_UTS_NS_FILTER    9
-#define CONFIG_COMM_FILTER      10
+#define CONFIG_MODE                 0
+#define CONFIG_SHOW_SYSCALL         1
+#define CONFIG_EXEC_ENV             2
+#define CONFIG_CAPTURE_FILES        3
+#define CONFIG_EXTRACT_DYN_CODE     4
+#define CONFIG_TRACEE_PID           5
+#define CONFIG_UID_FILTER           6
+#define CONFIG_MNT_NS_FILTER        7
+#define CONFIG_PID_NS_FILTER        8
+#define CONFIG_UTS_NS_FILTER        9
+#define CONFIG_COMM_FILTER          10
+#define CONFIG_CAPTURE_STACK_TRACES 11
 
 // get_config(CONFIG_XXX_FILTER) returns 0 if not enabled
 #define FILTER_IN  1
@@ -655,9 +656,11 @@ static __always_inline context_t init_and_save_context(void* ctx, buf_t *submit_
     context.retval = ret;
 
     // Get Stack trace
-    u32 stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_REUSE_STACKID | BPF_F_USER_STACK);
-    if (stack_id >= 0) {
-        bpf_probe_read(&context.stack_id, STACK_ID_LEN, &stack_id);
+    if (get_config(CONFIG_CAPTURE_STACK_TRACES)) {
+        u32 stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_REUSE_STACKID | BPF_F_USER_STACK);
+        if (stack_id >= 0) {
+            bpf_probe_read(&context.stack_id, STACK_ID_LEN, &stack_id);
+        }
     }
 
     save_context_to_buf(submit_p, (void*)&context);

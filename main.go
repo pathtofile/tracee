@@ -65,6 +65,7 @@ func main() {
 				SecurityAlerts:        c.Bool("security-alerts"),
 				EventsFile:            os.Stdout,
 				ErrorsFile:            os.Stderr,
+				CaptureStackTraces:    c.Bool("capture-stack-traces"),
 			}
 			capture := c.StringSlice("capture")
 			for _, cap := range capture {
@@ -215,6 +216,11 @@ func main() {
 				Value:       "if-needed",
 				Usage:       "when to build the bpf program. possible options: 'never'/'always'/'if-needed'",
 				Destination: &buildPolicy,
+			},
+			&cli.BoolFlag{
+				Name:  "capture-stack-traces",
+				Value: false,
+				Usage: "Capture stack traces for each event",
 			},
 		},
 	}

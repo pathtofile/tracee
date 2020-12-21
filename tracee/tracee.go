@@ -39,6 +39,7 @@ type TraceeConfig struct {
 	ErrorsFile            *os.File
 	maxPidsCache          int // maximum number of pids to cache per mnt ns (in Tracee.pidsInMntns)
 	BPFObjPath            string
+	CaptureStackTraces    bool
 }
 
 type Filter struct {
@@ -422,6 +423,7 @@ func (t *Tracee) populateBPFMaps() error {
 	bpfConfigMap.Update(uint32(configCaptureFiles), boolToUInt32(t.config.CaptureWrite))
 	bpfConfigMap.Update(uint32(configExtractDynCode), boolToUInt32(t.config.CaptureMem))
 	bpfConfigMap.Update(uint32(configTraceePid), uint32(os.Getpid()))
+	bpfConfigMap.Update(uint32(configCaptureStackTraces), boolToUInt32(t.config.CaptureStackTraces))
 
 	pidsMap, _ := t.bpfModule.GetMap("pids_map")
 	for _, pid := range t.config.PidsToTrace {

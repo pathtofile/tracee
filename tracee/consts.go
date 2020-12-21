@@ -16,6 +16,7 @@ const (
 	configPidNsFilter
 	configUTSNsFilter
 	configCommFilter
+	configCaptureStackTraces
 )
 
 const (
