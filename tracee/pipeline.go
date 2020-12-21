@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"sync"
-	"strings"
 	"strconv"
+	"strings"
+	"sync"
 )
 
 func (t *Tracee) runEventPipeline(done <-chan struct{}) error {
@@ -121,14 +121,14 @@ func (t *Tracee) getStackTrace(StackID [4]byte) (string, error) {
 	// Lookup the StackTraceID in the map
 	// The Id could be missing for various reasons, including
 	// the id has aged out, or we are not collecting stack traces
-	stackBytes, err := stackTracesMap.GetValue(StackID[0:4], stackFrameSize * maxStackDepth)
+	stackBytes, err := stackTracesMap.GetValue(StackID[0:4], stackFrameSize*maxStackDepth)
 	if err != nil {
 		return "", nil
 	}
 
 	var StackTrace string
-	for i:=0; i<len(stackBytes); i+= stackFrameSize {
-		stackAddr := binary.LittleEndian.Uint64(stackBytes[i:i+stackFrameSize])
+	for i := 0; i < len(stackBytes); i += stackFrameSize {
+		stackAddr := binary.LittleEndian.Uint64(stackBytes[i : i+stackFrameSize])
 		if stackAddr == 0 {
 			break
 		}
