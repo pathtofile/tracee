@@ -46,8 +46,8 @@
 #define MAX_PATH_PREF_SIZE  64            // Max path prefix should be bounded due to instructions limit
 #define MAX_STR_FILTER_SIZE 16            // Max string filter size should be bounded due to instructions limit
 #define MAX_STACK_TRACES    1024          // Max amount of different stack traces to keep track of
-#define MAX_STACK_DEPTH     10            // Max depth of each stack trace to track
-#define STACK_ID_LEN        4             // Length of the Stack ID Key
+#define MAX_STACK_DEPTH     20            // Max depth of each stack trace to track
+#define STACK_ID_LEN        sizeof(u32)   // Length of the Stack ID Key which is a uint32
 
 #define SUBMIT_BUF_IDX      0
 #define STRING_BUF_IDX      1
@@ -187,7 +187,7 @@ BPF_MAP(_name, BPF_MAP_TYPE_PERF_EVENT_ARRAY, int, __u32, 1024);
 struct bpf_map_def SEC("maps") _name = { \
   .type = BPF_MAP_TYPE_STACK_TRACE, \
   .key_size = sizeof(u32), \
-  .value_size = sizeof(u64) * MAX_STACK_DEPTH, \
+  .value_size = sizeof(size_t) * MAX_STACK_DEPTH, \
   .max_entries = _max_entries, \
 };
 

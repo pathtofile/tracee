@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"strings"
+	"strconv"
 )
 
 func (t *Tracee) runEventPipeline(done <-chan struct{}) error {
@@ -108,7 +109,8 @@ func (t *Tracee) processRawEvent(done <-chan struct{}, in <-chan RawEvent) (<-ch
 }
 
 func (t *Tracee) getStackTrace(StackID [4]byte) (string, error) {
-	stackFrameSize := 8
+	stackFrameSize := (strconv.IntSize / 8)
+	maxStackDepth := 20
 
 	// Get Map that holds the stack traces
 	stackTracesMap, err := t.bpfModule.GetMap("stack_traces")
@@ -119,7 +121,7 @@ func (t *Tracee) getStackTrace(StackID [4]byte) (string, error) {
 	// Lookup the StackTraceID in the map
 	// The Id could be missing for various reasons, including
 	// the id has aged out, or we are not collecting stack traces
-	stackBytes, err := stackTracesMap.GetValue(StackID[0:4], stackFrameSize * 10)
+	stackBytes, err := stackTracesMap.GetValue(StackID[0:4], stackFrameSize * maxStackDepth)
 	if err != nil {
 		return "", nil
 	}
