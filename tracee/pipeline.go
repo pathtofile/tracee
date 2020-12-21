@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"strings"
 )
 
 func (t *Tracee) runEventPipeline(done <-chan struct{}) error {
@@ -106,6 +107,26 @@ func (t *Tracee) processRawEvent(done <-chan struct{}, in <-chan RawEvent) (<-ch
 	return out, errc, nil
 }
 
+func (t *Tracee) getStackTrace(StackID uint32) (string, error) {
+	var StackTrace string
+	stackFrameSize := 8
+	stackTracesMap, _ := t.bpfModule.GetMap("stack_traces")
+	stackBytes, err := stackTracesMap.GetValue(StackID, stackFrameSize * 10)
+	if err == nil {
+		for i:=0; i<len(stackBytes); i+= stackFrameSize {
+			stackAddr := binary.LittleEndian.Uint64(stackBytes[i:i+stackFrameSize])
+			if stackAddr == 0 {
+				break
+			}
+			StackTrace += fmt.Sprintf("0x%X,", stackAddr)
+		}
+		StackTrace = strings.TrimSuffix(StackTrace, ",")
+	} else {
+		return StackTrace, err
+	}
+	return StackTrace, nil
+}
+
 func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) (<-chan Event, <-chan error, error) {
 	out := make(chan Event, 1000)
 	errc := make(chan error, 1)
@@ -133,7 +154,19 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 					continue
 				}
 			}
-			evt, err := newEvent(rawEvent.Ctx, argsNames, args)
+
+			// Add stack trace if needed
+			var stackTrace string
+			StackID := binary.LittleEndian.Uint32(rawEvent.Ctx.StackID[0:len(rawEvent.Ctx.StackID)])
+			if StackID != 0 {
+				stackTrace, err = t.getStackTrace(StackID)
+				if err != nil {
+					errc <- err
+					continue
+				}
+			}
+
+			evt, err := newEvent(rawEvent.Ctx, argsNames, args, stackTrace)
 			if err != nil {
 				errc <- err
 				continue

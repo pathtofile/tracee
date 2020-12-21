@@ -997,7 +997,8 @@ type context struct {
 	EventID  int32
 	Retval   int64
 	Argnum   uint8
-	_        [7]byte //padding
+	StackID  [4]byte
+	_        [3]byte //padding
 }
 
 func (t *Tracee) processLostEvents() {

@@ -45,6 +45,9 @@
 #define MAX_STR_ARR_ELEM    40            // String array elements number should be bounded due to instructions limit
 #define MAX_PATH_PREF_SIZE  64            // Max path prefix should be bounded due to instructions limit
 #define MAX_STR_FILTER_SIZE 16            // Max string filter size should be bounded due to instructions limit
+#define MAX_STACK_TRACES    1024          // Max amount of different stack traces to keep track of
+#define MAX_STACK_DEPTH     10            // Max depth of each stack trace to track
+#define STACK_ID_LEN        4             // Length of the Stack ID Key
 
 #define SUBMIT_BUF_IDX      0
 #define STRING_BUF_IDX      1
@@ -176,6 +179,17 @@ BPF_MAP(_name, BPF_MAP_TYPE_PERF_EVENT_ARRAY, int, __u32, 1024);
 #error Minimal required kernel version is 4.14
 #endif
 
+// Stack Traces are slightly different
+// in that the value is 1 big byte array
+// of the stack addresses
+#define BPF_STACK_TRACE(_name, _max_entries) \
+struct bpf_map_def SEC("maps") _name = { \
+  .type = BPF_MAP_TYPE_STACK_TRACE, \
+  .key_size = sizeof(u32), \
+  .value_size = sizeof(u64) * MAX_STACK_DEPTH, \
+  .max_entries = _max_entries, \
+};
+
 /*=============================== INTERNAL STRUCTS ===========================*/
 
 typedef struct context {
@@ -194,6 +208,7 @@ typedef struct context {
     u32 eventid;
     s64 retval;
     u8 argnum;
+    char stack_id[STACK_ID_LEN];
 } context_t;
 
 typedef struct args {
@@ -275,6 +290,7 @@ BPF_PERCPU_ARRAY(bufs_off, u32, MAX_BUFFERS);       // Holds offsets to bufs res
 BPF_PROG_ARRAY(prog_array, MAX_TAIL_CALL);          // Used to store programs for tail calls
 BPF_PROG_ARRAY(sys_enter_tails, MAX_EVENT_ID);      // Used to store programs for tail calls
 BPF_PROG_ARRAY(sys_exit_tails, MAX_EVENT_ID);       // Used to store programs for tail calls
+BPF_STACK_TRACE(stack_traces, MAX_STACK_TRACES);    // Used to store stack traces
 
 /*================================== EVENTS ====================================*/
 
@@ -464,6 +480,9 @@ static __always_inline int init_context(context_t *context)
     // Save timestamp in microsecond resolution
     context->ts = bpf_ktime_get_ns()/1000;
 
+    // Clean Stack Trace ID
+    __builtin_memset(&context->stack_id, 0, STACK_ID_LEN);
+
     return 0;
 }
 
@@ -627,15 +646,21 @@ static __always_inline int save_context_to_buf(buf_t *submit_p, void *ptr)
     return 0;
 }
 
-static __always_inline context_t init_and_save_context(buf_t *submit_p, u32 id, u8 argnum, long ret)
+static __always_inline context_t init_and_save_context(void* ctx, buf_t *submit_p, u32 id, u8 argnum, long ret)
 {
     context_t context = {};
     init_context(&context);
     context.eventid = id;
     context.argnum = argnum;
     context.retval = ret;
-    save_context_to_buf(submit_p, (void*)&context);
 
+    // Get Stack trace
+    u32 stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_REUSE_STACKID | BPF_F_USER_STACK);
+    if (stack_id >= 0) {
+        bpf_probe_read(&context.stack_id, STACK_ID_LEN, &stack_id);
+    }
+
+    save_context_to_buf(submit_p, (void*)&context);
     return context;
 }
 
@@ -1169,7 +1194,7 @@ static __always_inline int trace_ret_generic(void *ctx, u32 id, u64 types, u64 t
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
     u8 argnum = save_args_to_submit_buf(types, tags, args);
-    init_and_save_context(submit_p, id, argnum, ret);
+    init_and_save_context(ctx, submit_p, id, argnum, ret);
 
     events_perf_submit(ctx);
     return 0;
@@ -1282,7 +1307,7 @@ struct bpf_raw_tracepoint_args *ctx
             return 0;
         set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-        context_t context = init_and_save_context(submit_p, RAW_SYS_ENTER, 1 /*argnum*/, 0 /*ret*/);
+        context_t context = init_and_save_context(ctx, submit_p, RAW_SYS_ENTER, 1 /*argnum*/, 0 /*ret*/);
 
         u64 *tags = bpf_map_lookup_elem(&params_names_map, &context.eventid);
         if (!tags) {
@@ -1367,7 +1392,7 @@ struct bpf_raw_tracepoint_args *ctx
             return 0;
         set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-        context_t context = init_and_save_context(submit_p, RAW_SYS_EXIT, 1 /*argnum*/, ret);
+        context_t context = init_and_save_context(ctx, submit_p, RAW_SYS_EXIT, 1 /*argnum*/, ret);
 
         u64 *tags = bpf_map_lookup_elem(&params_names_map, &context.eventid);
         if (!tags) {
@@ -1429,7 +1454,7 @@ int syscall__execve(void *ctx)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SYS_EXECVE, 2 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, SYS_EXECVE, 2 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = bpf_map_lookup_elem(&params_names_map, &context.eventid);
     if (!tags) {
@@ -1465,7 +1490,7 @@ int syscall__execveat(void *ctx)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SYS_EXECVEAT, 4 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, SYS_EXECVEAT, 4 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = bpf_map_lookup_elem(&params_names_map, &context.eventid);
     if (!tags) {
@@ -1522,7 +1547,7 @@ struct bpf_raw_tracepoint_args *ctx
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    init_and_save_context(submit_p, SCHED_PROCESS_EXIT, 0, 0);
+    init_and_save_context(ctx, submit_p, SCHED_PROCESS_EXIT, 0, 0);
 
     events_perf_submit(ctx);
     return 0;
@@ -1541,7 +1566,7 @@ int BPF_KPROBE(trace_do_exit)
 
     long code = PT_REGS_PARM1(ctx);
 
-    init_and_save_context(submit_p, DO_EXIT, 0, code);
+    init_and_save_context(ctx, submit_p, DO_EXIT, 0, code);
 
     events_perf_submit(ctx);
     return 0;
@@ -1558,7 +1583,7 @@ int BPF_KPROBE(trace_security_bprm_check)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SECURITY_BPRM_CHECK, 3 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, SECURITY_BPRM_CHECK, 3 /*argnum*/, 0 /*ret*/);
 
     struct linux_binprm *bprm = (struct linux_binprm *)PT_REGS_PARM1(ctx);
     struct file* file = get_file_ptr_from_bprm(bprm);
@@ -1598,7 +1623,7 @@ int BPF_KPROBE(trace_security_file_open)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SECURITY_FILE_OPEN, 4 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, SECURITY_FILE_OPEN, 4 /*argnum*/, 0 /*ret*/);
 
     struct file *file = (struct file *)PT_REGS_PARM1(ctx);
     dev_t s_dev = get_dev_from_file(file);
@@ -1643,7 +1668,7 @@ int BPF_KPROBE(trace_security_inode_unlink)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, SECURITY_INODE_UNLINK, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, SECURITY_INODE_UNLINK, 1 /*argnum*/, 0 /*ret*/);
 
     //struct inode *dir = (struct inode *)PT_REGS_PARM1(ctx);
     struct dentry *dentry = (struct dentry *)PT_REGS_PARM2(ctx);
@@ -1681,7 +1706,7 @@ int BPF_KPROBE(trace_cap_capable)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, CAP_CAPABLE, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, CAP_CAPABLE, 1 /*argnum*/, 0 /*ret*/);
 
     //const struct cred *cred = (const struct cred *)PT_REGS_PARM1(ctx);
     //struct user_namespace *targ_ns = (struct user_namespace *)PT_REGS_PARM2(ctx);
@@ -1898,7 +1923,7 @@ static __always_inline int do_vfs_write_writev_tail(struct pt_regs *ctx, u32 eve
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, event_id, 5 /*argnum*/, PT_REGS_RC(ctx));
+    context_t context = init_and_save_context(ctx, submit_p, event_id, 5 /*argnum*/, PT_REGS_RC(ctx));
 
     bool delete_args = true;
     if (load_args(&saved_args, delete_args, event_id) != 0) {
@@ -2041,7 +2066,7 @@ int BPF_KPROBE(trace_mmap_alert)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = bpf_map_lookup_elem(&params_names_map, &context.eventid);
     if (!tags) {
@@ -2088,7 +2113,7 @@ int BPF_KPROBE(trace_mprotect_alert)
         return 0;
     set_buf_off(SUBMIT_BUF_IDX, sizeof(context_t));
 
-    context_t context = init_and_save_context(submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
+    context_t context = init_and_save_context(ctx, submit_p, MEM_PROT_ALERT, 1 /*argnum*/, 0 /*ret*/);
 
     u64 *tags = bpf_map_lookup_elem(&params_names_map, &context.eventid);
     if (!tags) {
