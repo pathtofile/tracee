@@ -331,7 +331,7 @@ func (b *BPFMap) GetValue(key interface{}, valueSize int) ([]byte, error) {
 
 	err := C.bpf_map_lookup_elem(b.fd, keyPtr, valuePtr)
 	if err != 0 {
-		return nil, fmt.Errorf("failed to get lookup key %d from map %s: %V", key, b.name, err)
+		return nil, fmt.Errorf("failed to get lookup key %d from map %s", key, b.name)
 	}
 	return value, nil
 }

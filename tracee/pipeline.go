@@ -107,23 +107,32 @@ func (t *Tracee) processRawEvent(done <-chan struct{}, in <-chan RawEvent) (<-ch
 	return out, errc, nil
 }
 
-func (t *Tracee) getStackTrace(StackID uint32) (string, error) {
-	var StackTrace string
+func (t *Tracee) getStackTrace(StackID [4]byte) (string, error) {
 	stackFrameSize := 8
-	stackTracesMap, _ := t.bpfModule.GetMap("stack_traces")
-	stackBytes, err := stackTracesMap.GetValue(StackID, stackFrameSize * 10)
-	if err == nil {
-		for i:=0; i<len(stackBytes); i+= stackFrameSize {
-			stackAddr := binary.LittleEndian.Uint64(stackBytes[i:i+stackFrameSize])
-			if stackAddr == 0 {
-				break
-			}
-			StackTrace += fmt.Sprintf("0x%X,", stackAddr)
-		}
-		StackTrace = strings.TrimSuffix(StackTrace, ",")
-	} else {
-		return StackTrace, err
+
+	// Get Map that holds the stack traces
+	stackTracesMap, err := t.bpfModule.GetMap("stack_traces")
+	if err != nil {
+		return "", nil
 	}
+
+	// Lookup the StackTraceID in the map
+	// The Id could be missing for various reasons, including
+	// the id has aged out, or we are not collecting stack traces
+	stackBytes, err := stackTracesMap.GetValue(StackID[0:4], stackFrameSize * 10)
+	if err != nil {
+		return "", nil
+	}
+
+	var StackTrace string
+	for i:=0; i<len(stackBytes); i+= stackFrameSize {
+		stackAddr := binary.LittleEndian.Uint64(stackBytes[i:i+stackFrameSize])
+		if stackAddr == 0 {
+			break
+		}
+		StackTrace += fmt.Sprintf("0x%X,", stackAddr)
+	}
+	StackTrace = strings.TrimSuffix(StackTrace, ",")
 	return StackTrace, nil
 }
 
@@ -157,14 +166,7 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 
 			// Add stack trace if needed
 			var stackTrace string
-			StackID := binary.LittleEndian.Uint32(rawEvent.Ctx.StackID[0:len(rawEvent.Ctx.StackID)])
-			if StackID != 0 {
-				stackTrace, err = t.getStackTrace(StackID)
-				if err != nil {
-					errc <- err
-					continue
-				}
-			}
+			stackTrace, _ = t.getStackTrace(rawEvent.Ctx.StackID)
 
 			evt, err := newEvent(rawEvent.Ctx, argsNames, args, stackTrace)
 			if err != nil {
