@@ -85,7 +85,7 @@ type Event struct {
 	EventName           string     `json:"eventName"`
 	ArgsNum             int        `json:"argsNum"`
 	ReturnValue         int        `json:"returnValue"`
-	StackTrace          string     `json:"stackTrace"`
+	StackTrace          []uint64   `json:"stackTrace"`
 	Args                []Argument `json:"args"` //Arguments are ordered according their appearance in the original event
 }
 
@@ -95,7 +95,7 @@ type Argument struct {
 	Value interface{} `json:"value"`
 }
 
-func newEvent(ctx context, argsNames []string, args []interface{}, stackTrace string) (Event, error) {
+func newEvent(ctx context, argsNames []string, args []interface{}, stackTrace []uint64) (Event, error) {
 	e := Event{
 		Timestamp:           float64(ctx.Ts) / 1000000.0,
 		ProcessID:           int(ctx.Pid),

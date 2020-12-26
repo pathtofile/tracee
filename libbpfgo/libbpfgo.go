@@ -336,6 +336,33 @@ func (b *BPFMap) GetValue(key interface{}, valueSize int) ([]byte, error) {
 	return value, nil
 }
 
+func (b *BPFMap) DeleteKey(key interface{}) error {
+	var keyPtr unsafe.Pointer
+	if k, isType := key.(int8); isType {
+		keyPtr = unsafe.Pointer(&k)
+	} else if k, isType := key.(uint8); isType {
+		keyPtr = unsafe.Pointer(&k)
+	} else if k, isType := key.(int32); isType {
+		keyPtr = unsafe.Pointer(&k)
+	} else if k, isType := key.(uint32); isType {
+		keyPtr = unsafe.Pointer(&k)
+	} else if k, isType := key.(int64); isType {
+		keyPtr = unsafe.Pointer(&k)
+	} else if k, isType := key.(uint64); isType {
+		keyPtr = unsafe.Pointer(&k)
+	} else if k, isType := key.([]byte); isType {
+		keyPtr = unsafe.Pointer(&k[0])
+	} else {
+		return fmt.Errorf("failed to update map %s: unknown key type %T", b.name, key)
+	}
+
+	err := C.bpf_map_delete_elem(b.fd, keyPtr)
+	if err != 0 {
+		return fmt.Errorf("failed to get lookup key %d from map %s", key, b.name)
+	}
+	return nil
+}
+
 func (b *BPFMap) Update(key, value interface{}) error {
 	var keyPtr, valuePtr unsafe.Pointer
 	if k, isType := key.(int8); isType {

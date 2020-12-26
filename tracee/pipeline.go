@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -108,34 +107,42 @@ func (t *Tracee) processRawEvent(done <-chan struct{}, in <-chan RawEvent) (<-ch
 	return out, errc, nil
 }
 
-func (t *Tracee) getStackTrace(StackID [4]byte) (string, error) {
+func (t *Tracee) getStackTrace(StackID uint32) ([]uint64, error) {
+	StackTrace := make([]uint64, maxStackDepth)
 	stackFrameSize := (strconv.IntSize / 8)
-	maxStackDepth := 20
 
 	// Get Map that holds the stack traces
 	stackTracesMap, err := t.bpfModule.GetMap("stack_traces")
 	if err != nil {
-		return "", nil
+		return StackTrace[0:0], nil
 	}
 
 	// Lookup the StackTraceID in the map
 	// The Id could be missing for various reasons, including
 	// the id has aged out, or we are not collecting stack traces
-	stackBytes, err := stackTracesMap.GetValue(StackID[0:4], stackFrameSize*maxStackDepth)
+	stackBytes, err := stackTracesMap.GetValue(StackID, stackFrameSize*maxStackDepth)
 	if err != nil {
-		return "", nil
+		return StackTrace[0:0], nil
 	}
 
-	var StackTrace string
+	stackCounter := 0
 	for i := 0; i < len(stackBytes); i += stackFrameSize {
+		StackTrace[stackCounter] = 0
 		stackAddr := binary.LittleEndian.Uint64(stackBytes[i : i+stackFrameSize])
 		if stackAddr == 0 {
 			break
 		}
-		StackTrace += fmt.Sprintf("0x%X,", stackAddr)
+		StackTrace[stackCounter] = stackAddr
+		stackCounter++
 	}
-	StackTrace = strings.TrimSuffix(StackTrace, ",")
-	return StackTrace, nil
+
+	// Remove the ID from the map to we don't fill it up
+	err = stackTracesMap.DeleteKey(StackID)
+	if err != nil {
+		fmt.Printf("[**] Failed to delte key!\n")
+	}
+
+	return StackTrace[0:stackCounter], nil
 }
 
 func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) (<-chan Event, <-chan error, error) {
@@ -167,8 +174,10 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 			}
 
 			// Add stack trace if needed
-			var stackTrace string
-			stackTrace, _ = t.getStackTrace(rawEvent.Ctx.StackID)
+			var stackTrace []uint64
+			if t.config.StackTraces {
+				stackTrace, _ = t.getStackTrace(rawEvent.Ctx.StackID)
+			}
 
 			evt, err := newEvent(rawEvent.Ctx, argsNames, args, stackTrace)
 			if err != nil {

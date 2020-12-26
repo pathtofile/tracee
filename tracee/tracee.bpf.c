@@ -45,7 +45,7 @@
 #define MAX_STR_ARR_ELEM    40            // String array elements number should be bounded due to instructions limit
 #define MAX_PATH_PREF_SIZE  64            // Max path prefix should be bounded due to instructions limit
 #define MAX_STR_FILTER_SIZE 16            // Max string filter size should be bounded due to instructions limit
-#define MAX_STACK_TRACES    1024          // Max amount of different stack traces to keep track of
+#define MAX_STACK_TRACES    1024          // Max amount of different stack traces to buffer in the Map
 #define MAX_STACK_DEPTH     20            // Max depth of each stack trace to track
 #define STACK_ID_LEN        sizeof(u32)   // Length of the Stack ID Key which is a uint32
 
@@ -170,16 +170,6 @@ BPF_MAP(_name, BPF_MAP_TYPE_PROG_ARRAY, u32, u32, _max_entries);
 #define BPF_PERF_OUTPUT(_name) \
 BPF_MAP(_name, BPF_MAP_TYPE_PERF_EVENT_ARRAY, int, __u32, 1024);
 
-#ifdef RHEL_RELEASE_CODE
-#if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8, 0))
-#define RHEL_RELEASE_GT_8_0
-#endif
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
-#error Minimal required kernel version is 4.14
-#endif
-
 // Stack Traces are slightly different
 // in that the value is 1 big byte array
 // of the stack addresses
@@ -190,6 +180,16 @@ struct bpf_map_def SEC("maps") _name = { \
   .value_size = sizeof(size_t) * MAX_STACK_DEPTH, \
   .max_entries = _max_entries, \
 };
+
+#ifdef RHEL_RELEASE_CODE
+#if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8, 0))
+#define RHEL_RELEASE_GT_8_0
+#endif
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
+#error Minimal required kernel version is 4.14
+#endif
 
 /*=============================== INTERNAL STRUCTS ===========================*/
 
@@ -657,7 +657,7 @@ static __always_inline context_t init_and_save_context(void* ctx, buf_t *submit_
 
     // Get Stack trace
     if (get_config(CONFIG_CAPTURE_STACK_TRACES)) {
-        u32 stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_REUSE_STACKID | BPF_F_USER_STACK);
+        int stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
         if (stack_id >= 0) {
             bpf_probe_read(&context.stack_id, STACK_ID_LEN, &stack_id);
         }

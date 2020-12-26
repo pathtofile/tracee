@@ -65,7 +65,7 @@ func main() {
 				SecurityAlerts:        c.Bool("security-alerts"),
 				EventsFile:            os.Stdout,
 				ErrorsFile:            os.Stderr,
-				CaptureStackTraces:    c.Bool("capture-stack-traces"),
+				StackTraces:           c.Bool("stack-traces"),
 			}
 			capture := c.StringSlice("capture")
 			for _, cap := range capture {
@@ -218,9 +218,9 @@ func main() {
 				Destination: &buildPolicy,
 			},
 			&cli.BoolFlag{
-				Name:  "capture-stack-traces",
+				Name:  "stack-traces",
 				Value: false,
-				Usage: "Capture stack traces for each event",
+				Usage: "Include stack traces for each event",
 			},
 		},
 	}
