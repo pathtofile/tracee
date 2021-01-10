@@ -109,34 +109,34 @@ func (t *Tracee) processRawEvent(done <-chan struct{}, in <-chan RawEvent) (<-ch
 	return out, errc, nil
 }
 
-func (t *Tracee) getStackTrace(StackID uint32) ([]uint64, error) {
-	StackTrace := make([]uint64, maxStackDepth)
+func (t *Tracee) getStackAddresses(StackID uint32) ([]uint64, error) {
+	StackAddresses := make([]uint64, maxStackDepth)
 	stackFrameSize := (strconv.IntSize / 8)
 
-	// Lookup the StackTraceID in the map
+	// Lookup the StackID in the map
 	// The ID could have aged out of the Map, as it only holds a finite number of
 	// Stack IDs in it's Map
-	stackBytes, err := t.stackTracesMap.GetValue(StackID, stackFrameSize*maxStackDepth)
+	stackBytes, err := t.StackAddressesMap.GetValue(StackID, stackFrameSize*maxStackDepth)
 	if err != nil {
-		return StackTrace[0:0], nil
+		return StackAddresses[0:0], nil
 	}
 
 	stackCounter := 0
 	for i := 0; i < len(stackBytes); i += stackFrameSize {
-		StackTrace[stackCounter] = 0
+		StackAddresses[stackCounter] = 0
 		stackAddr := binary.LittleEndian.Uint64(stackBytes[i : i+stackFrameSize])
 		if stackAddr == 0 {
 			break
 		}
-		StackTrace[stackCounter] = stackAddr
+		StackAddresses[stackCounter] = stackAddr
 		stackCounter++
 	}
 
 	// Attempt to remove the ID from the map so we don't fill it up
 	// But if this fails continue on
-	_ = t.stackTracesMap.DeleteKey(StackID)
+	_ = t.StackAddressesMap.DeleteKey(StackID)
 
-	return StackTrace[0:stackCounter], nil
+	return StackAddresses[0:stackCounter], nil
 }
 
 func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) (<-chan external.Event, <-chan error, error) {
@@ -168,12 +168,12 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 			}
 
 			// Add stack trace if needed
-			var stackTrace []uint64
-			if t.config.StackTraces {
-				stackTrace, _ = t.getStackTrace(rawEvent.Ctx.StackID)
+			var StackAddresses []uint64
+			if t.config.StackAddresses {
+				StackAddresses, _ = t.getStackAddresses(rawEvent.Ctx.StackID)
 			}
 
-			evt, err := newEvent(rawEvent.Ctx, argMetas, args, stackTrace)
+			evt, err := newEvent(rawEvent.Ctx, argMetas, args, StackAddresses)
 			if err != nil {
 				errc <- err
 				continue

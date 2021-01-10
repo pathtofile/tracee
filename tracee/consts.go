@@ -27,7 +27,7 @@ const (
 	configCommFilter
 	configPidFilter
 	configContFilter
-	configStackTraces
+	configStackAddresses
 )
 
 const (

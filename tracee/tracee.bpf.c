@@ -48,7 +48,7 @@
 #define MAX_STRING_SIZE     4096          // Choosing this value to be the same as PATH_MAX
 #define MAX_STR_ARR_ELEM    40            // String array elements number should be bounded due to instructions limit
 #define MAX_PATH_PREF_SIZE  64            // Max path prefix should be bounded due to instructions limit
-#define MAX_STACK_TRACES    1024          // Max amount of different stack traces to buffer in the Map
+#define MAX_STACK_ADDRESSES 1024          // Max amount of different stack trace addresses to buffer in the Map
 #define MAX_STACK_DEPTH     20            // Max depth of each stack trace to track
 #define MAX_STR_FILTER_SIZE 32            // Max string filter size should be bounded due to instructions limit
 
@@ -296,31 +296,31 @@ struct mount {
 
 /*=================================== MAPS =====================================*/
 
-BPF_HASH(config_map, u32, u32);                     // Various configurations
-BPF_HASH(chosen_events_map, u32, u32);              // Events chosen by the user
-BPF_HASH(pids_map, u32, u32);                       // Save traced pids or container pid namespaces ids
-BPF_HASH(args_map, u64, args_t);                    // Persist args info between function entry and return
-BPF_HASH(ret_map, u64, u64);                        // Persist return value to be used in tail calls
-BPF_HASH(inequality_filter, u32, u64);              // Used to filter events by some uint field either by < or >
-BPF_HASH(uid_filter, u32, u32);                     // Used to filter events by UID, for specific UIDs either by == or !=
-BPF_HASH(pid_filter, u32, u32);                     // Used to filter events by PID
-BPF_HASH(mnt_ns_filter, u64, u32);                  // Used to filter events by mount namespace id
-BPF_HASH(pid_ns_filter, u64, u32);                  // Used to filter events by pid namespace id
-BPF_HASH(uts_ns_filter, string_filter_t, u32);      // Used to filter events by uts namespace name
-BPF_HASH(comm_filter, string_filter_t, u32);        // Used to filter events by command name
-BPF_ARRAY(cont_filter, u8, 1);                      // Used to filter events running in a container
-BPF_HASH(bin_args_map, u64, bin_args_t);            // Persist args for send_bin funtion
-BPF_HASH(sys_32_to_64_map, u32, u32);               // Map 32bit syscalls numbers to 64bit syscalls numbers
-BPF_HASH(params_types_map, u32, u64);               // Encoded parameters types for event
-BPF_HASH(params_names_map, u32, u64);               // Encoded parameters names for event
-BPF_ARRAY(file_filter, path_filter_t, 3);           // Used to filter vfs_write events
-BPF_ARRAY(string_store, path_filter_t, 1);          // Store strings from userspace
-BPF_PERCPU_ARRAY(bufs, buf_t, MAX_BUFFERS);         // Percpu global buffer variables
-BPF_PERCPU_ARRAY(bufs_off, u32, MAX_BUFFERS);       // Holds offsets to bufs respectively
-BPF_PROG_ARRAY(prog_array, MAX_TAIL_CALL);          // Used to store programs for tail calls
-BPF_PROG_ARRAY(sys_enter_tails, MAX_EVENT_ID);      // Used to store programs for tail calls
-BPF_PROG_ARRAY(sys_exit_tails, MAX_EVENT_ID);       // Used to store programs for tail calls
-BPF_STACK_TRACE(stack_traces, MAX_STACK_TRACES);    // Used to store stack traces
+BPF_HASH(config_map, u32, u32);                         // Various configurations
+BPF_HASH(chosen_events_map, u32, u32);                  // Events chosen by the user
+BPF_HASH(pids_map, u32, u32);                           // Save traced pids or container pid namespaces ids
+BPF_HASH(args_map, u64, args_t);                        // Persist args info between function entry and return
+BPF_HASH(ret_map, u64, u64);                            // Persist return value to be used in tail calls
+BPF_HASH(inequality_filter, u32, u64);                  // Used to filter events by some uint field either by < or >
+BPF_HASH(uid_filter, u32, u32);                         // Used to filter events by UID, for specific UIDs either by == or !=
+BPF_HASH(pid_filter, u32, u32);                         // Used to filter events by PID
+BPF_HASH(mnt_ns_filter, u64, u32);                      // Used to filter events by mount namespace id
+BPF_HASH(pid_ns_filter, u64, u32);                      // Used to filter events by pid namespace id
+BPF_HASH(uts_ns_filter, string_filter_t, u32);          // Used to filter events by uts namespace name
+BPF_HASH(comm_filter, string_filter_t, u32);            // Used to filter events by command name
+BPF_ARRAY(cont_filter, u8, 1);                          // Used to filter events running in a container
+BPF_HASH(bin_args_map, u64, bin_args_t);                // Persist args for send_bin funtion
+BPF_HASH(sys_32_to_64_map, u32, u32);                   // Map 32bit syscalls numbers to 64bit syscalls numbers
+BPF_HASH(params_types_map, u32, u64);                   // Encoded parameters types for event
+BPF_HASH(params_names_map, u32, u64);                   // Encoded parameters names for event
+BPF_ARRAY(file_filter, path_filter_t, 3);               // Used to filter vfs_write events
+BPF_ARRAY(string_store, path_filter_t, 1);              // Store strings from userspace
+BPF_PERCPU_ARRAY(bufs, buf_t, MAX_BUFFERS);             // Percpu global buffer variables
+BPF_PERCPU_ARRAY(bufs_off, u32, MAX_BUFFERS);           // Holds offsets to bufs respectively
+BPF_PROG_ARRAY(prog_array, MAX_TAIL_CALL);              // Used to store programs for tail calls
+BPF_PROG_ARRAY(sys_enter_tails, MAX_EVENT_ID);          // Used to store programs for tail calls
+BPF_PROG_ARRAY(sys_exit_tails, MAX_EVENT_ID);           // Used to store programs for tail calls
+BPF_STACK_TRACE(stack_addresses, MAX_STACK_ADDRESSES);  // Used to store stack traces
 
 /*================================== EVENTS ====================================*/
 
@@ -740,7 +740,7 @@ static __always_inline context_t init_and_save_context(void* ctx, buf_t *submit_
 
     // Get Stack trace
     if (get_config(CONFIG_CAPTURE_STACK_TRACES)) {
-        int stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
+        int stack_id = bpf_get_stackid(ctx, &stack_addresses, BPF_F_USER_STACK);
         if (stack_id >= 0) {
             context.stack_id = stack_id;
         }
