@@ -1,5 +1,10 @@
 package tracee
 
+import (
+	"github.com/aquasecurity/tracee/tracee/external"
+	"math"
+)
+
 // bpfConfig is an enum that include various configurations that can be passed to bpf code
 // config should match defined values in ebpf code
 type bpfConfig uint32
@@ -20,6 +25,8 @@ const (
 	configPidNsFilter
 	configUTSNsFilter
 	configCommFilter
+	configPidFilter
+	configContFilter
 	configStackTraces
 )
 
@@ -31,6 +38,24 @@ const (
 const (
 	filterIn  uint8 = 1
 	filterOut uint8 = 2
+)
+
+const (
+	uidLess uint32 = iota
+	uidGreater
+	pidLess
+	pidGreater
+	mntNsLess
+	mntNsGreater
+	pidNsLess
+	pidNsGreater
+)
+
+// Set default inequality values
+// val<0 and val>math.MaxUint64 should never be used by the user as they give an empty set
+const (
+	LessNotSet    uint64 = 0
+	GreaterNotSet uint64 = math.MaxUint64
 )
 
 // an enum that specifies the index of a function to be used in a bpf tail call
@@ -46,13 +71,10 @@ const (
 type binType uint8
 
 const (
-	ModeProcessAll uint32 = iota + 1
-	ModeProcessNew
-	ModeProcessList
-	ModeContainerAll
-	ModeContainerNew
-	ModeHostAll
-	ModeHostNew
+	ModeAll uint32 = iota + 1
+	ModeNew
+	ModePidNs
+	ModeFollow
 )
 
 const (
@@ -115,344 +137,10 @@ type EventConfig struct {
 	Sets           []string
 }
 
+// Non syscalls events (used by all architectures)
 // events should match defined values in ebpf code
 const (
-	ReadEventID int32 = iota
-	WriteEventID
-	OpenEventID
-	CloseEventID
-	StatEventID
-	FstatEventID
-	LstatEventID
-	PollEventID
-	LseekEventID
-	MmapEventID
-	MprotectEventID
-	MunmapEventID
-	BrkEventID
-	RtSigactionEventID
-	RtSigprocmaskEventID
-	RtSigreturnEventID
-	IoctlEventID
-	Pread64EventID
-	Pwrite64EventID
-	ReadvEventID
-	WritevEventID
-	AccessEventID
-	PipeEventID
-	SelectEventID
-	SchedYieldEventID
-	MremapEventID
-	MsyncEventID
-	MincoreEventID
-	MadviseEventID
-	ShmgetEventID
-	ShmatEventID
-	ShmctlEventID
-	DupEventID
-	Dup2EventID
-	PauseEventID
-	NanosleepEventID
-	GetitimerEventID
-	AlarmEventID
-	SetitimerEventID
-	GetpidEventID
-	SendfileEventID
-	SocketEventID
-	ConnectEventID
-	AcceptEventID
-	SendtoEventID
-	RecvfromEventID
-	SendmsgEventID
-	RecvmsgEventID
-	ShutdownEventID
-	BindEventID
-	ListenEventID
-	GetsocknameEventID
-	GetpeernameEventID
-	SocketpairEventID
-	SetsockoptEventID
-	GetsockoptEventID
-	CloneEventID
-	ForkEventID
-	VforkEventID
-	ExecveEventID
-	ExitEventID
-	Wait4EventID
-	KillEventID
-	UnameEventID
-	SemgetEventID
-	SemopEventID
-	SemctlEventID
-	ShmdtEventID
-	MsggetEventID
-	MsgsndEventID
-	MsgrcvEventID
-	MsgctlEventID
-	FcntlEventID
-	FlockEventID
-	FsyncEventID
-	FdatasyncEventID
-	TruncateEventID
-	FtruncateEventID
-	GetdentsEventID
-	GetcwdEventID
-	ChdirEventID
-	FchdirEventID
-	RenameEventID
-	MkdirEventID
-	RmdirEventID
-	CreatEventID
-	LinkEventID
-	UnlinkEventID
-	SymlinkEventID
-	ReadlinkEventID
-	ChmodEventID
-	FchmodEventID
-	ChownEventID
-	FchownEventID
-	LchownEventID
-	UmaskEventID
-	GettimeofdayEventID
-	GetrlimitEventID
-	GetrusageEventID
-	SysinfoEventID
-	TimesEventID
-	PtraceEventID
-	GetuidEventID
-	SyslogEventID
-	GetgidEventID
-	SetuidEventID
-	SetgidEventID
-	GeteuidEventID
-	GetegidEventID
-	SetpgidEventID
-	GetppidEventID
-	GetpgrpEventID
-	SetsidEventID
-	SetreuidEventID
-	SetregidEventID
-	GetgroupsEventID
-	SetgroupsEventID
-	SetresuidEventID
-	GetresuidEventID
-	SetresgidEventID
-	GetresgidEventID
-	GetpgidEventID
-	SetfsuidEventID
-	SetfsgidEventID
-	GetsidEventID
-	CapgetEventID
-	CapsetEventID
-	RtSigpendingEventID
-	RtSigtimedwaitEventID
-	RtSigqueueinfoEventID
-	RtSigsuspendEventID
-	SigaltstackEventID
-	UtimeEventID
-	MknodEventID
-	UselibEventID
-	PersonalityEventID
-	UstatEventID
-	StatfsEventID
-	FstatfsEventID
-	SysfsEventID
-	GetpriorityEventID
-	SetpriorityEventID
-	SchedSetparamEventID
-	SchedGetparamEventID
-	SchedSetschedulerEventID
-	SchedGetschedulerEventID
-	SchedGetPriorityMaxEventID
-	SchedGetPriorityMinEventID
-	SchedRrGetIntervalEventID
-	MlockEventID
-	MunlockEventID
-	MlockallEventID
-	MunlockallEventID
-	VhangupEventID
-	ModifyLdtEventID
-	PivotRootEventID
-	SysctlEventID
-	PrctlEventID
-	ArchPrctlEventID
-	AdjtimexEventID
-	SetrlimitEventID
-	ChrootEventID
-	SyncEventID
-	AcctEventID
-	SettimeofdayEventID
-	MountEventID
-	UmountEventID
-	SwaponEventID
-	SwapoffEventID
-	RebootEventID
-	SethostnameEventID
-	SetdomainnameEventID
-	IoplEventID
-	IopermEventID
-	CreateModuleEventID
-	InitModuleEventID
-	DeleteModuleEventID
-	GetKernelSymsEventID
-	QueryModuleEventID
-	QuotactlEventID
-	NfsservctlEventID
-	GetpmsgEventID
-	PutpmsgEventID
-	AfsEventID
-	TuxcallEventID
-	SecurityEventID
-	GettidEventID
-	ReadaheadEventID
-	SetxattrEventID
-	LsetxattrEventID
-	FsetxattrEventID
-	GetxattrEventID
-	LgetxattrEventID
-	FgetxattrEventID
-	ListxattrEventID
-	LlistxattrEventID
-	FlistxattrEventID
-	RemovexattrEventID
-	LremovexattrEventID
-	FremovexattrEventID
-	TkillEventID
-	TimeEventID
-	FutexEventID
-	SchedSetaffinityEventID
-	SchedGetaffinityEventID
-	SetThreadAreaEventID
-	IoSetupEventID
-	IoDestroyEventID
-	IoGeteventsEventID
-	IoSubmitEventID
-	IoCancelEventID
-	GetThreadAreaEventID
-	LookupDcookieEventID
-	EpollCreateEventID
-	EpollCtlOldEventID
-	EpollWaitOldEventID
-	RemapFilePagesEventID
-	Getdents64EventID
-	SetTidAddressEventID
-	RestartSyscallEventID
-	SemtimedopEventID
-	Fadvise64EventID
-	TimerCreateEventID
-	TimerSettimeEventID
-	TimerGettimeEventID
-	TimerGetoverrunEventID
-	TimerDeleteEventID
-	ClockSettimeEventID
-	ClockGettimeEventID
-	ClockGetresEventID
-	ClockNanosleepEventID
-	ExitGroupEventID
-	EpollWaitEventID
-	EpollCtlEventID
-	TgkillEventID
-	UtimesEventID
-	VserverEventID
-	MbindEventID
-	SetMempolicyEventID
-	GetMempolicyEventID
-	MqOpenEventID
-	MqUnlinkEventID
-	MqTimedsendEventID
-	MqTimedreceiveEventID
-	MqNotifyEventID
-	MqGetsetattrEventID
-	KexecLoadEventID
-	WaitidEventID
-	AddKeyEventID
-	RequestKeyEventID
-	KeyctlEventID
-	IoprioSetEventID
-	IoprioGetEventID
-	InotifyInitEventID
-	InotifyAddWatchEventID
-	InotifyRmWatchEventID
-	MigratePagesEventID
-	OpenatEventID
-	MkdiratEventID
-	MknodatEventID
-	FchownatEventID
-	FutimesatEventID
-	NewfstatatEventID
-	UnlinkatEventID
-	RenameatEventID
-	LinkatEventID
-	SymlinkatEventID
-	ReadlinkatEventID
-	FchmodatEventID
-	FaccessatEventID
-	Pselect6EventID
-	PpollEventID
-	UnshareEventID
-	SetRobustListEventID
-	GetRobustListEventID
-	SpliceEventID
-	TeeEventID
-	SyncFileRangeEventID
-	VmspliceEventID
-	MovePagesEventID
-	UtimensatEventID
-	EpollPwaitEventID
-	SignalfdEventID
-	TimerfdCreateEventID
-	EventfdEventID
-	FallocateEventID
-	TimerfdSettimeEventID
-	TimerfdGettimeEventID
-	Accept4EventID
-	Signalfd4EventID
-	Eventfd2EventID
-	EpollCreate1EventID
-	Dup3EventID
-	Pipe2EventID
-	InotifyInit1EventID
-	PreadvEventID
-	PwritevEventID
-	RtTgsigqueueinfoEventID
-	PerfEventOpenEventID
-	RecvmmsgEventID
-	FanotifyInitEventID
-	FanotifyMarkEventID
-	Prlimit64EventID
-	NameToHandleAtEventID
-	OpenByHandleAtEventID
-	ClockAdjtimeEventID
-	SyncfsEventID
-	SendmmsgEventID
-	SetnsEventID
-	GetcpuEventID
-	ProcessVmReadvEventID
-	ProcessVmWritevEventID
-	KcmpEventID
-	FinitModuleEventID
-	SchedSetattrEventID
-	SchedGetattrEventID
-	Renameat2EventID
-	SeccompEventID
-	GetrandomEventID
-	MemfdCreateEventID
-	KexecFileLoadEventID
-	BpfEventID
-	ExecveatEventID
-	UserfaultfdEventID
-	MembarrierEventID
-	Mlock2EventID
-	CopyFileRangeEventID
-	Preadv2EventID
-	Pwritev2EventID
-	PkeyMprotectEventID
-	PkeyAllocEventID
-	PkeyFreeEventID
-	StatxEventID
-	IoPgeteventsEventID
-	RseqEventID
-	SysEnterEventID
+	SysEnterEventID int32 = iota + 1000
 	SysExitEventID
 	DoExitEventID
 	CapCapableEventID
@@ -463,438 +151,7 @@ const (
 	VfsWritevEventID
 	MemProtAlertEventID
 	SchedProcessExitEventID
-)
-
-// 32bit syscall numbers
-const (
-	sys32restart_syscall              int32 = 0
-	sys32exit                         int32 = 1
-	sys32fork                         int32 = 2
-	sys32read                         int32 = 3
-	sys32write                        int32 = 4
-	sys32open                         int32 = 5
-	sys32close                        int32 = 6
-	sys32waitpid                      int32 = 7
-	sys32creat                        int32 = 8
-	sys32link                         int32 = 9
-	sys32unlink                       int32 = 10
-	sys32execve                       int32 = 11
-	sys32chdir                        int32 = 12
-	sys32time                         int32 = 13
-	sys32mknod                        int32 = 14
-	sys32chmod                        int32 = 15
-	sys32lchown                       int32 = 16
-	sys32break                        int32 = 17
-	sys32oldstat                      int32 = 18
-	sys32lseek                        int32 = 19
-	sys32getpid                       int32 = 20
-	sys32mount                        int32 = 21
-	sys32umount                       int32 = 22
-	sys32setuid                       int32 = 23
-	sys32getuid                       int32 = 24
-	sys32stime                        int32 = 25
-	sys32ptrace                       int32 = 26
-	sys32alarm                        int32 = 27
-	sys32oldfstat                     int32 = 28
-	sys32pause                        int32 = 29
-	sys32utime                        int32 = 30
-	sys32stty                         int32 = 31
-	sys32gtty                         int32 = 32
-	sys32access                       int32 = 33
-	sys32nice                         int32 = 34
-	sys32ftime                        int32 = 35
-	sys32sync                         int32 = 36
-	sys32kill                         int32 = 37
-	sys32rename                       int32 = 38
-	sys32mkdir                        int32 = 39
-	sys32rmdir                        int32 = 40
-	sys32dup                          int32 = 41
-	sys32pipe                         int32 = 42
-	sys32times                        int32 = 43
-	sys32prof                         int32 = 44
-	sys32brk                          int32 = 45
-	sys32setgid                       int32 = 46
-	sys32getgid                       int32 = 47
-	sys32signal                       int32 = 48
-	sys32geteuid                      int32 = 49
-	sys32getegid                      int32 = 50
-	sys32acct                         int32 = 51
-	sys32umount2                      int32 = 52
-	sys32lock                         int32 = 53
-	sys32ioctl                        int32 = 54
-	sys32fcntl                        int32 = 55
-	sys32mpx                          int32 = 56
-	sys32setpgid                      int32 = 57
-	sys32ulimit                       int32 = 58
-	sys32oldolduname                  int32 = 59
-	sys32umask                        int32 = 60
-	sys32chroot                       int32 = 61
-	sys32ustat                        int32 = 62
-	sys32dup2                         int32 = 63
-	sys32getppid                      int32 = 64
-	sys32getpgrp                      int32 = 65
-	sys32setsid                       int32 = 66
-	sys32sigaction                    int32 = 67
-	sys32sgetmask                     int32 = 68
-	sys32ssetmask                     int32 = 69
-	sys32setreuid                     int32 = 70
-	sys32setregid                     int32 = 71
-	sys32sigsuspend                   int32 = 72
-	sys32sigpending                   int32 = 73
-	sys32sethostname                  int32 = 74
-	sys32setrlimit                    int32 = 75
-	sys32getrlimit                    int32 = 76
-	sys32getrusage                    int32 = 77
-	sys32gettimeofday                 int32 = 78
-	sys32settimeofday                 int32 = 79
-	sys32getgroups                    int32 = 80
-	sys32setgroups                    int32 = 81
-	sys32select                       int32 = 82
-	sys32symlink                      int32 = 83
-	sys32oldlstat                     int32 = 84
-	sys32readlink                     int32 = 85
-	sys32uselib                       int32 = 86
-	sys32swapon                       int32 = 87
-	sys32reboot                       int32 = 88
-	sys32readdir                      int32 = 89
-	sys32mmap                         int32 = 90
-	sys32munmap                       int32 = 91
-	sys32truncate                     int32 = 92
-	sys32ftruncate                    int32 = 93
-	sys32fchmod                       int32 = 94
-	sys32fchown                       int32 = 95
-	sys32getpriority                  int32 = 96
-	sys32setpriority                  int32 = 97
-	sys32profil                       int32 = 98
-	sys32statfs                       int32 = 99
-	sys32fstatfs                      int32 = 100
-	sys32ioperm                       int32 = 101
-	sys32socketcall                   int32 = 102
-	sys32syslog                       int32 = 103
-	sys32setitimer                    int32 = 104
-	sys32getitimer                    int32 = 105
-	sys32stat                         int32 = 106
-	sys32lstat                        int32 = 107
-	sys32fstat                        int32 = 108
-	sys32olduname                     int32 = 109
-	sys32iopl                         int32 = 110
-	sys32vhangup                      int32 = 111
-	sys32idle                         int32 = 112
-	sys32vm86old                      int32 = 113
-	sys32wait4                        int32 = 114
-	sys32swapoff                      int32 = 115
-	sys32sysinfo                      int32 = 116
-	sys32ipc                          int32 = 117
-	sys32fsync                        int32 = 118
-	sys32sigreturn                    int32 = 119
-	sys32clone                        int32 = 120
-	sys32setdomainname                int32 = 121
-	sys32uname                        int32 = 122
-	sys32modify_ldt                   int32 = 123
-	sys32adjtimex                     int32 = 124
-	sys32mprotect                     int32 = 125
-	sys32sigprocmask                  int32 = 126
-	sys32create_module                int32 = 127
-	sys32init_module                  int32 = 128
-	sys32delete_module                int32 = 129
-	sys32get_kernel_syms              int32 = 130
-	sys32quotactl                     int32 = 131
-	sys32getpgid                      int32 = 132
-	sys32fchdir                       int32 = 133
-	sys32bdflush                      int32 = 134
-	sys32sysfs                        int32 = 135
-	sys32personality                  int32 = 136
-	sys32afs_syscall                  int32 = 137
-	sys32setfsuid                     int32 = 138
-	sys32setfsgid                     int32 = 139
-	sys32_llseek                      int32 = 140
-	sys32getdents                     int32 = 141
-	sys32_newselect                   int32 = 142
-	sys32flock                        int32 = 143
-	sys32msync                        int32 = 144
-	sys32readv                        int32 = 145
-	sys32writev                       int32 = 146
-	sys32getsid                       int32 = 147
-	sys32fdatasync                    int32 = 148
-	sys32_sysctl                      int32 = 149
-	sys32mlock                        int32 = 150
-	sys32munlock                      int32 = 151
-	sys32mlockall                     int32 = 152
-	sys32munlockall                   int32 = 153
-	sys32sched_setparam               int32 = 154
-	sys32sched_getparam               int32 = 155
-	sys32sched_setscheduler           int32 = 156
-	sys32sched_getscheduler           int32 = 157
-	sys32sched_yield                  int32 = 158
-	sys32sched_get_priority_max       int32 = 159
-	sys32sched_get_priority_min       int32 = 160
-	sys32sched_rr_get_interval        int32 = 161
-	sys32nanosleep                    int32 = 162
-	sys32mremap                       int32 = 163
-	sys32setresuid                    int32 = 164
-	sys32getresuid                    int32 = 165
-	sys32vm86                         int32 = 166
-	sys32query_module                 int32 = 167
-	sys32poll                         int32 = 168
-	sys32nfsservctl                   int32 = 169
-	sys32setresgid                    int32 = 170
-	sys32getresgid                    int32 = 171
-	sys32prctl                        int32 = 172
-	sys32rt_sigreturn                 int32 = 173
-	sys32rt_sigaction                 int32 = 174
-	sys32rt_sigprocmask               int32 = 175
-	sys32rt_sigpending                int32 = 176
-	sys32rt_sigtimedwait              int32 = 177
-	sys32rt_sigqueueinfo              int32 = 178
-	sys32rt_sigsuspend                int32 = 179
-	sys32pread64                      int32 = 180
-	sys32pwrite64                     int32 = 181
-	sys32chown                        int32 = 182
-	sys32getcwd                       int32 = 183
-	sys32capget                       int32 = 184
-	sys32capset                       int32 = 185
-	sys32sigaltstack                  int32 = 186
-	sys32sendfile                     int32 = 187
-	sys32getpmsg                      int32 = 188
-	sys32putpmsg                      int32 = 189
-	sys32vfork                        int32 = 190
-	sys32ugetrlimit                   int32 = 191
-	sys32mmap2                        int32 = 192
-	sys32truncate64                   int32 = 193
-	sys32ftruncate64                  int32 = 194
-	sys32stat64                       int32 = 195
-	sys32lstat64                      int32 = 196
-	sys32fstat64                      int32 = 197
-	sys32lchown32                     int32 = 198
-	sys32getuid32                     int32 = 199
-	sys32getgid32                     int32 = 200
-	sys32geteuid32                    int32 = 201
-	sys32getegid32                    int32 = 202
-	sys32setreuid32                   int32 = 203
-	sys32setregid32                   int32 = 204
-	sys32getgroups32                  int32 = 205
-	sys32setgroups32                  int32 = 206
-	sys32fchown32                     int32 = 207
-	sys32setresuid32                  int32 = 208
-	sys32getresuid32                  int32 = 209
-	sys32setresgid32                  int32 = 210
-	sys32getresgid32                  int32 = 211
-	sys32chown32                      int32 = 212
-	sys32setuid32                     int32 = 213
-	sys32setgid32                     int32 = 214
-	sys32setfsuid32                   int32 = 215
-	sys32setfsgid32                   int32 = 216
-	sys32pivot_root                   int32 = 217
-	sys32mincore                      int32 = 218
-	sys32madvise                      int32 = 219
-	sys32getdents64                   int32 = 220
-	sys32fcntl64                      int32 = 221
-	sys32gettid                       int32 = 224
-	sys32readahead                    int32 = 225
-	sys32setxattr                     int32 = 226
-	sys32lsetxattr                    int32 = 227
-	sys32fsetxattr                    int32 = 228
-	sys32getxattr                     int32 = 229
-	sys32lgetxattr                    int32 = 230
-	sys32fgetxattr                    int32 = 231
-	sys32listxattr                    int32 = 232
-	sys32llistxattr                   int32 = 233
-	sys32flistxattr                   int32 = 234
-	sys32removexattr                  int32 = 235
-	sys32lremovexattr                 int32 = 236
-	sys32fremovexattr                 int32 = 237
-	sys32tkill                        int32 = 238
-	sys32sendfile64                   int32 = 239
-	sys32futex                        int32 = 240
-	sys32sched_setaffinity            int32 = 241
-	sys32sched_getaffinity            int32 = 242
-	sys32set_thread_area              int32 = 243
-	sys32get_thread_area              int32 = 244
-	sys32io_setup                     int32 = 245
-	sys32io_destroy                   int32 = 246
-	sys32io_getevents                 int32 = 247
-	sys32io_submit                    int32 = 248
-	sys32io_cancel                    int32 = 249
-	sys32fadvise64                    int32 = 250
-	sys32exit_group                   int32 = 252
-	sys32lookup_dcookie               int32 = 253
-	sys32epoll_create                 int32 = 254
-	sys32epoll_ctl                    int32 = 255
-	sys32epoll_wait                   int32 = 256
-	sys32remap_file_pages             int32 = 257
-	sys32set_tid_address              int32 = 258
-	sys32timer_create                 int32 = 259
-	sys32timer_settime                int32 = 260
-	sys32timer_gettime                int32 = 261
-	sys32timer_getoverrun             int32 = 262
-	sys32timer_delete                 int32 = 263
-	sys32clock_settime                int32 = 264
-	sys32clock_gettime                int32 = 265
-	sys32clock_getres                 int32 = 266
-	sys32clock_nanosleep              int32 = 267
-	sys32statfs64                     int32 = 268
-	sys32fstatfs64                    int32 = 269
-	sys32tgkill                       int32 = 270
-	sys32utimes                       int32 = 271
-	sys32fadvise64_64                 int32 = 272
-	sys32vserver                      int32 = 273
-	sys32mbind                        int32 = 274
-	sys32get_mempolicy                int32 = 275
-	sys32set_mempolicy                int32 = 276
-	sys32mq_open                      int32 = 277
-	sys32mq_unlink                    int32 = 278
-	sys32mq_timedsend                 int32 = 279
-	sys32mq_timedreceive              int32 = 280
-	sys32mq_notify                    int32 = 281
-	sys32mq_getsetattr                int32 = 282
-	sys32kexec_load                   int32 = 283
-	sys32waitid                       int32 = 284
-	sys32add_key                      int32 = 286
-	sys32request_key                  int32 = 287
-	sys32keyctl                       int32 = 288
-	sys32ioprio_set                   int32 = 289
-	sys32ioprio_get                   int32 = 290
-	sys32inotify_init                 int32 = 291
-	sys32inotify_add_watch            int32 = 292
-	sys32inotify_rm_watch             int32 = 293
-	sys32migrate_pages                int32 = 294
-	sys32openat                       int32 = 295
-	sys32mkdirat                      int32 = 296
-	sys32mknodat                      int32 = 297
-	sys32fchownat                     int32 = 298
-	sys32futimesat                    int32 = 299
-	sys32fstatat64                    int32 = 300
-	sys32unlinkat                     int32 = 301
-	sys32renameat                     int32 = 302
-	sys32linkat                       int32 = 303
-	sys32symlinkat                    int32 = 304
-	sys32readlinkat                   int32 = 305
-	sys32fchmodat                     int32 = 306
-	sys32faccessat                    int32 = 307
-	sys32pselect6                     int32 = 308
-	sys32ppoll                        int32 = 309
-	sys32unshare                      int32 = 310
-	sys32set_robust_list              int32 = 311
-	sys32get_robust_list              int32 = 312
-	sys32splice                       int32 = 313
-	sys32sync_file_range              int32 = 314
-	sys32tee                          int32 = 315
-	sys32vmsplice                     int32 = 316
-	sys32move_pages                   int32 = 317
-	sys32getcpu                       int32 = 318
-	sys32epoll_pwait                  int32 = 319
-	sys32utimensat                    int32 = 320
-	sys32signalfd                     int32 = 321
-	sys32timerfd_create               int32 = 322
-	sys32eventfd                      int32 = 323
-	sys32fallocate                    int32 = 324
-	sys32timerfd_settime              int32 = 325
-	sys32timerfd_gettime              int32 = 326
-	sys32signalfd4                    int32 = 327
-	sys32eventfd2                     int32 = 328
-	sys32epoll_create1                int32 = 329
-	sys32dup3                         int32 = 330
-	sys32pipe2                        int32 = 331
-	sys32inotify_init1                int32 = 332
-	sys32preadv                       int32 = 333
-	sys32pwritev                      int32 = 334
-	sys32rt_tgsigqueueinfo            int32 = 335
-	sys32perf_event_open              int32 = 336
-	sys32recvmmsg                     int32 = 337
-	sys32fanotify_init                int32 = 338
-	sys32fanotify_mark                int32 = 339
-	sys32prlimit64                    int32 = 340
-	sys32name_to_handle_at            int32 = 341
-	sys32open_by_handle_at            int32 = 342
-	sys32clock_adjtime                int32 = 343
-	sys32syncfs                       int32 = 344
-	sys32sendmmsg                     int32 = 345
-	sys32setns                        int32 = 346
-	sys32process_vm_readv             int32 = 347
-	sys32process_vm_writev            int32 = 348
-	sys32kcmp                         int32 = 349
-	sys32finit_module                 int32 = 350
-	sys32sched_setattr                int32 = 351
-	sys32sched_getattr                int32 = 352
-	sys32renameat2                    int32 = 353
-	sys32seccomp                      int32 = 354
-	sys32getrandom                    int32 = 355
-	sys32memfd_create                 int32 = 356
-	sys32bpf                          int32 = 357
-	sys32execveat                     int32 = 358
-	sys32socket                       int32 = 359
-	sys32socketpair                   int32 = 360
-	sys32bind                         int32 = 361
-	sys32connect                      int32 = 362
-	sys32listen                       int32 = 363
-	sys32accept4                      int32 = 364
-	sys32getsockopt                   int32 = 365
-	sys32setsockopt                   int32 = 366
-	sys32getsockname                  int32 = 367
-	sys32getpeername                  int32 = 368
-	sys32sendto                       int32 = 369
-	sys32sendmsg                      int32 = 370
-	sys32recvfrom                     int32 = 371
-	sys32recvmsg                      int32 = 372
-	sys32shutdown                     int32 = 373
-	sys32userfaultfd                  int32 = 374
-	sys32membarrier                   int32 = 375
-	sys32mlock2                       int32 = 376
-	sys32copy_file_range              int32 = 377
-	sys32preadv2                      int32 = 378
-	sys32pwritev2                     int32 = 379
-	sys32pkey_mprotect                int32 = 380
-	sys32pkey_alloc                   int32 = 381
-	sys32pkey_free                    int32 = 382
-	sys32statx                        int32 = 383
-	sys32arch_prctl                   int32 = 384
-	sys32io_pgetevents                int32 = 385
-	sys32rseq                         int32 = 386
-	sys32semget                       int32 = 393
-	sys32semctl                       int32 = 394
-	sys32shmget                       int32 = 395
-	sys32shmctl                       int32 = 396
-	sys32shmat                        int32 = 397
-	sys32shmdt                        int32 = 398
-	sys32msgget                       int32 = 399
-	sys32msgsnd                       int32 = 400
-	sys32msgrcv                       int32 = 401
-	sys32msgctl                       int32 = 402
-	sys32clock_gettime64              int32 = 403
-	sys32clock_settime64              int32 = 404
-	sys32clock_adjtime64              int32 = 405
-	sys32clock_getres_time64          int32 = 406
-	sys32clock_nanosleep_time64       int32 = 407
-	sys32timer_gettime64              int32 = 408
-	sys32timer_settime64              int32 = 409
-	sys32timerfd_gettime64            int32 = 410
-	sys32timerfd_settime64            int32 = 411
-	sys32utimensat_time64             int32 = 412
-	sys32pselect6_time64              int32 = 413
-	sys32ppoll_time64                 int32 = 414
-	sys32io_pgetevents_time64         int32 = 416
-	sys32recvmmsg_time64              int32 = 417
-	sys32mq_timedsend_time64          int32 = 418
-	sys32mq_timedreceive_time64       int32 = 419
-	sys32semtimedop_time64            int32 = 420
-	sys32rt_sigtimedwait_time64       int32 = 421
-	sys32futex_time64                 int32 = 422
-	sys32sched_rr_get_interval_time64 int32 = 423
-	sys32pidfd_send_signal            int32 = 424
-	sys32io_uring_setup               int32 = 425
-	sys32io_uring_enter               int32 = 426
-	sys32io_uring_register            int32 = 427
-	sys32open_tree                    int32 = 428
-	sys32move_mount                   int32 = 429
-	sys32fsopen                       int32 = 430
-	sys32fsconfig                     int32 = 431
-	sys32fsmount                      int32 = 432
-	sys32fspick                       int32 = 433
-	sys32pidfd_open                   int32 = 434
-	sys32clone3                       int32 = 435
-	sys32openat2                      int32 = 437
-	sys32pidfd_getfd                  int32 = 438
-	sys32undefined                    int32 = 1000
+	MaxEventID
 )
 
 // EventsIDToEvent is list of supported events, indexed by their ID
@@ -1247,345 +504,340 @@ var EventsIDToEvent = map[int32]EventConfig{
 	SchedProcessExitEventID:    {ID: SchedProcessExitEventID, ID32Bit: sys32undefined, Name: "sched_process_exit", Probes: []probe{{event: "sched:sched_process_exit", attach: rawTracepoint, fn: "tracepoint__sched__sched_process_exit"}}, EssentialEvent: true, Sets: []string{"default", "proc", "proc_life"}},
 }
 
-type param struct {
-	pType string
-	pName string
-}
-
 // EventsIDToParams is list of the parameters (name and type) used by the events
-var EventsIDToParams = map[int32][]param{
-	ReadEventID:                {{pType: "int", pName: "fd"}, {pType: "void*", pName: "buf"}, {pType: "size_t", pName: "count"}},
-	WriteEventID:               {{pType: "int", pName: "fd"}, {pType: "void*", pName: "buf"}, {pType: "size_t", pName: "count"}},
-	OpenEventID:                {{pType: "const char*", pName: "pathname"}, {pType: "int", pName: "flags"}, {pType: "mode_t", pName: "mode"}},
-	CloseEventID:               {{pType: "int", pName: "fd"}},
-	StatEventID:                {{pType: "const char*", pName: "pathname"}, {pType: "struct stat*", pName: "statbuf"}},
-	FstatEventID:               {{pType: "int", pName: "fd"}, {pType: "struct stat*", pName: "statbuf"}},
-	LstatEventID:               {{pType: "const char*", pName: "pathname"}, {pType: "struct stat*", pName: "statbuf"}},
-	PollEventID:                {{pType: "struct pollfd*", pName: "fds"}, {pType: "unsigned int", pName: "nfds"}, {pType: "int", pName: "timeout"}},
-	LseekEventID:               {{pType: "int", pName: "fd"}, {pType: "off_t", pName: "offset"}, {pType: "unsigned int", pName: "whence"}},
-	MmapEventID:                {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "length"}, {pType: "int", pName: "prot"}, {pType: "int", pName: "flags"}, {pType: "int", pName: "fd"}, {pType: "off_t", pName: "off"}},
-	MprotectEventID:            {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "len"}, {pType: "int", pName: "prot"}},
-	MunmapEventID:              {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "length"}},
-	BrkEventID:                 {{pType: "void*", pName: "addr"}},
-	RtSigactionEventID:         {{pType: "int", pName: "signum"}, {pType: "const struct sigaction*", pName: "act"}, {pType: "struct sigaction*", pName: "oldact"}, {pType: "size_t", pName: "sigsetsize"}},
-	RtSigprocmaskEventID:       {{pType: "int", pName: "how"}, {pType: "sigset_t*", pName: "set"}, {pType: "sigset_t*", pName: "oldset"}, {pType: "size_t", pName: "sigsetsize"}},
+var EventsIDToParams = map[int32][]external.ArgMeta{
+	ReadEventID:                {{Type: "int", Name: "fd"}, {Type: "void*", Name: "buf"}, {Type: "size_t", Name: "count"}},
+	WriteEventID:               {{Type: "int", Name: "fd"}, {Type: "void*", Name: "buf"}, {Type: "size_t", Name: "count"}},
+	OpenEventID:                {{Type: "const char*", Name: "pathname"}, {Type: "int", Name: "flags"}, {Type: "mode_t", Name: "mode"}},
+	CloseEventID:               {{Type: "int", Name: "fd"}},
+	StatEventID:                {{Type: "const char*", Name: "pathname"}, {Type: "struct stat*", Name: "statbuf"}},
+	FstatEventID:               {{Type: "int", Name: "fd"}, {Type: "struct stat*", Name: "statbuf"}},
+	LstatEventID:               {{Type: "const char*", Name: "pathname"}, {Type: "struct stat*", Name: "statbuf"}},
+	PollEventID:                {{Type: "struct pollfd*", Name: "fds"}, {Type: "unsigned int", Name: "nfds"}, {Type: "int", Name: "timeout"}},
+	LseekEventID:               {{Type: "int", Name: "fd"}, {Type: "off_t", Name: "offset"}, {Type: "unsigned int", Name: "whence"}},
+	MmapEventID:                {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "length"}, {Type: "int", Name: "prot"}, {Type: "int", Name: "flags"}, {Type: "int", Name: "fd"}, {Type: "off_t", Name: "off"}},
+	MprotectEventID:            {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "len"}, {Type: "int", Name: "prot"}},
+	MunmapEventID:              {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "length"}},
+	BrkEventID:                 {{Type: "void*", Name: "addr"}},
+	RtSigactionEventID:         {{Type: "int", Name: "signum"}, {Type: "const struct sigaction*", Name: "act"}, {Type: "struct sigaction*", Name: "oldact"}, {Type: "size_t", Name: "sigsetsize"}},
+	RtSigprocmaskEventID:       {{Type: "int", Name: "how"}, {Type: "sigset_t*", Name: "set"}, {Type: "sigset_t*", Name: "oldset"}, {Type: "size_t", Name: "sigsetsize"}},
 	RtSigreturnEventID:         {},
-	IoctlEventID:               {{pType: "int", pName: "fd"}, {pType: "unsigned long", pName: "request"}, {pType: "unsigned long", pName: "arg"}},
-	Pread64EventID:             {{pType: "int", pName: "fd"}, {pType: "void*", pName: "buf"}, {pType: "size_t", pName: "count"}, {pType: "off_t", pName: "offset"}},
-	Pwrite64EventID:            {{pType: "int", pName: "fd"}, {pType: "const void*", pName: "buf"}, {pType: "size_t", pName: "count"}, {pType: "off_t", pName: "offset"}},
-	ReadvEventID:               {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "int", pName: "iovcnt"}},
-	WritevEventID:              {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "int", pName: "iovcnt"}},
-	AccessEventID:              {{pType: "const char*", pName: "pathname"}, {pType: "int", pName: "mode"}},
-	PipeEventID:                {{pType: "int[2]", pName: "pipefd"}},
-	SelectEventID:              {{pType: "int", pName: "nfds"}, {pType: "fd_set*", pName: "readfds"}, {pType: "fd_set*", pName: "writefds"}, {pType: "fd_set*", pName: "exceptfds"}, {pType: "struct timeval*", pName: "timeout"}},
+	IoctlEventID:               {{Type: "int", Name: "fd"}, {Type: "unsigned long", Name: "request"}, {Type: "unsigned long", Name: "arg"}},
+	Pread64EventID:             {{Type: "int", Name: "fd"}, {Type: "void*", Name: "buf"}, {Type: "size_t", Name: "count"}, {Type: "off_t", Name: "offset"}},
+	Pwrite64EventID:            {{Type: "int", Name: "fd"}, {Type: "const void*", Name: "buf"}, {Type: "size_t", Name: "count"}, {Type: "off_t", Name: "offset"}},
+	ReadvEventID:               {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "int", Name: "iovcnt"}},
+	WritevEventID:              {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "int", Name: "iovcnt"}},
+	AccessEventID:              {{Type: "const char*", Name: "pathname"}, {Type: "int", Name: "mode"}},
+	PipeEventID:                {{Type: "int[2]", Name: "pipefd"}},
+	SelectEventID:              {{Type: "int", Name: "nfds"}, {Type: "fd_set*", Name: "readfds"}, {Type: "fd_set*", Name: "writefds"}, {Type: "fd_set*", Name: "exceptfds"}, {Type: "struct timeval*", Name: "timeout"}},
 	SchedYieldEventID:          {},
-	MremapEventID:              {{pType: "void*", pName: "old_address"}, {pType: "size_t", pName: "old_size"}, {pType: "size_t", pName: "new_size"}, {pType: "int", pName: "flags"}, {pType: "void*", pName: "new_address"}},
-	MsyncEventID:               {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "length"}, {pType: "int", pName: "flags"}},
-	MincoreEventID:             {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "length"}, {pType: "unsigned char*", pName: "vec"}},
-	MadviseEventID:             {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "length"}, {pType: "int", pName: "advice"}},
-	ShmgetEventID:              {{pType: "key_t", pName: "key"}, {pType: "size_t", pName: "size"}, {pType: "int", pName: "shmflg"}},
-	ShmatEventID:               {{pType: "int", pName: "shmid"}, {pType: "const void*", pName: "shmaddr"}, {pType: "int", pName: "shmflg"}},
-	ShmctlEventID:              {{pType: "int", pName: "shmid"}, {pType: "int", pName: "cmd"}, {pType: "struct shmid_ds*", pName: "buf"}},
-	DupEventID:                 {{pType: "int", pName: "oldfd"}},
-	Dup2EventID:                {{pType: "int", pName: "oldfd"}, {pType: "int", pName: "newfd"}},
+	MremapEventID:              {{Type: "void*", Name: "old_address"}, {Type: "size_t", Name: "old_size"}, {Type: "size_t", Name: "new_size"}, {Type: "int", Name: "flags"}, {Type: "void*", Name: "new_address"}},
+	MsyncEventID:               {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "length"}, {Type: "int", Name: "flags"}},
+	MincoreEventID:             {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "length"}, {Type: "unsigned char*", Name: "vec"}},
+	MadviseEventID:             {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "length"}, {Type: "int", Name: "advice"}},
+	ShmgetEventID:              {{Type: "key_t", Name: "key"}, {Type: "size_t", Name: "size"}, {Type: "int", Name: "shmflg"}},
+	ShmatEventID:               {{Type: "int", Name: "shmid"}, {Type: "const void*", Name: "shmaddr"}, {Type: "int", Name: "shmflg"}},
+	ShmctlEventID:              {{Type: "int", Name: "shmid"}, {Type: "int", Name: "cmd"}, {Type: "struct shmid_ds*", Name: "buf"}},
+	DupEventID:                 {{Type: "int", Name: "oldfd"}},
+	Dup2EventID:                {{Type: "int", Name: "oldfd"}, {Type: "int", Name: "newfd"}},
 	PauseEventID:               {},
-	NanosleepEventID:           {{pType: "const struct timespec*", pName: "req"}, {pType: "struct timespec*", pName: "rem"}},
-	GetitimerEventID:           {{pType: "int", pName: "which"}, {pType: "struct itimerval*", pName: "curr_value"}},
-	AlarmEventID:               {{pType: "unsigned int", pName: "seconds"}},
-	SetitimerEventID:           {{pType: "int", pName: "which"}, {pType: "struct itimerval*", pName: "new_value"}, {pType: "struct itimerval*", pName: "old_value"}},
+	NanosleepEventID:           {{Type: "const struct timespec*", Name: "req"}, {Type: "struct timespec*", Name: "rem"}},
+	GetitimerEventID:           {{Type: "int", Name: "which"}, {Type: "struct itimerval*", Name: "curr_value"}},
+	AlarmEventID:               {{Type: "unsigned int", Name: "seconds"}},
+	SetitimerEventID:           {{Type: "int", Name: "which"}, {Type: "struct itimerval*", Name: "new_value"}, {Type: "struct itimerval*", Name: "old_value"}},
 	GetpidEventID:              {},
-	SendfileEventID:            {{pType: "int", pName: "out_fd"}, {pType: "int", pName: "in_fd"}, {pType: "off_t*", pName: "offset"}, {pType: "size_t", pName: "count"}},
-	SocketEventID:              {{pType: "int", pName: "domain"}, {pType: "int", pName: "type"}, {pType: "int", pName: "protocol"}},
-	ConnectEventID:             {{pType: "int", pName: "sockfd"}, {pType: "struct sockaddr*", pName: "addr"}, {pType: "int", pName: "addrlen"}},
-	AcceptEventID:              {{pType: "int", pName: "sockfd"}, {pType: "struct sockaddr*", pName: "addr"}, {pType: "int*", pName: "addrlen"}},
-	SendtoEventID:              {{pType: "int", pName: "sockfd"}, {pType: "void*", pName: "buf"}, {pType: "size_t", pName: "len"}, {pType: "int", pName: "flags"}, {pType: "struct sockaddr*", pName: "dest_addr"}, {pType: "int", pName: "addrlen"}},
-	RecvfromEventID:            {{pType: "int", pName: "sockfd"}, {pType: "void*", pName: "buf"}, {pType: "size_t", pName: "len"}, {pType: "int", pName: "flags"}, {pType: "struct sockaddr*", pName: "src_addr"}, {pType: "int*", pName: "addrlen"}},
-	SendmsgEventID:             {{pType: "int", pName: "sockfd"}, {pType: "struct msghdr*", pName: "msg"}, {pType: "int", pName: "flags"}},
-	RecvmsgEventID:             {{pType: "int", pName: "sockfd"}, {pType: "struct msghdr*", pName: "msg"}, {pType: "int", pName: "flags"}},
-	ShutdownEventID:            {{pType: "int", pName: "sockfd"}, {pType: "int", pName: "how"}},
-	BindEventID:                {{pType: "int", pName: "sockfd"}, {pType: "struct sockaddr*", pName: "addr"}, {pType: "int", pName: "addrlen"}},
-	ListenEventID:              {{pType: "int", pName: "sockfd"}, {pType: "int", pName: "backlog"}},
-	GetsocknameEventID:         {{pType: "int", pName: "sockfd"}, {pType: "struct sockaddr*", pName: "addr"}, {pType: "int*", pName: "addrlen"}},
-	GetpeernameEventID:         {{pType: "int", pName: "sockfd"}, {pType: "struct sockaddr*", pName: "addr"}, {pType: "int*", pName: "addrlen"}},
-	SocketpairEventID:          {{pType: "int", pName: "domain"}, {pType: "int", pName: "type"}, {pType: "int", pName: "protocol"}, {pType: "int[2]", pName: "sv"}},
-	SetsockoptEventID:          {{pType: "int", pName: "sockfd"}, {pType: "int", pName: "level"}, {pType: "int", pName: "optname"}, {pType: "const void*", pName: "optval"}, {pType: "int", pName: "optlen"}},
-	GetsockoptEventID:          {{pType: "int", pName: "sockfd"}, {pType: "int", pName: "level"}, {pType: "int", pName: "optname"}, {pType: "char*", pName: "optval"}, {pType: "int*", pName: "optlen"}},
-	CloneEventID:               {{pType: "unsigned long", pName: "flags"}, {pType: "void*", pName: "stack"}, {pType: "int*", pName: "parent_tid"}, {pType: "int*", pName: "child_tid"}, {pType: "unsigned long", pName: "tls"}},
+	SendfileEventID:            {{Type: "int", Name: "out_fd"}, {Type: "int", Name: "in_fd"}, {Type: "off_t*", Name: "offset"}, {Type: "size_t", Name: "count"}},
+	SocketEventID:              {{Type: "int", Name: "domain"}, {Type: "int", Name: "type"}, {Type: "int", Name: "protocol"}},
+	ConnectEventID:             {{Type: "int", Name: "sockfd"}, {Type: "struct sockaddr*", Name: "addr"}, {Type: "int", Name: "addrlen"}},
+	AcceptEventID:              {{Type: "int", Name: "sockfd"}, {Type: "struct sockaddr*", Name: "addr"}, {Type: "int*", Name: "addrlen"}},
+	SendtoEventID:              {{Type: "int", Name: "sockfd"}, {Type: "void*", Name: "buf"}, {Type: "size_t", Name: "len"}, {Type: "int", Name: "flags"}, {Type: "struct sockaddr*", Name: "dest_addr"}, {Type: "int", Name: "addrlen"}},
+	RecvfromEventID:            {{Type: "int", Name: "sockfd"}, {Type: "void*", Name: "buf"}, {Type: "size_t", Name: "len"}, {Type: "int", Name: "flags"}, {Type: "struct sockaddr*", Name: "src_addr"}, {Type: "int*", Name: "addrlen"}},
+	SendmsgEventID:             {{Type: "int", Name: "sockfd"}, {Type: "struct msghdr*", Name: "msg"}, {Type: "int", Name: "flags"}},
+	RecvmsgEventID:             {{Type: "int", Name: "sockfd"}, {Type: "struct msghdr*", Name: "msg"}, {Type: "int", Name: "flags"}},
+	ShutdownEventID:            {{Type: "int", Name: "sockfd"}, {Type: "int", Name: "how"}},
+	BindEventID:                {{Type: "int", Name: "sockfd"}, {Type: "struct sockaddr*", Name: "addr"}, {Type: "int", Name: "addrlen"}},
+	ListenEventID:              {{Type: "int", Name: "sockfd"}, {Type: "int", Name: "backlog"}},
+	GetsocknameEventID:         {{Type: "int", Name: "sockfd"}, {Type: "struct sockaddr*", Name: "addr"}, {Type: "int*", Name: "addrlen"}},
+	GetpeernameEventID:         {{Type: "int", Name: "sockfd"}, {Type: "struct sockaddr*", Name: "addr"}, {Type: "int*", Name: "addrlen"}},
+	SocketpairEventID:          {{Type: "int", Name: "domain"}, {Type: "int", Name: "type"}, {Type: "int", Name: "protocol"}, {Type: "int[2]", Name: "sv"}},
+	SetsockoptEventID:          {{Type: "int", Name: "sockfd"}, {Type: "int", Name: "level"}, {Type: "int", Name: "optname"}, {Type: "const void*", Name: "optval"}, {Type: "int", Name: "optlen"}},
+	GetsockoptEventID:          {{Type: "int", Name: "sockfd"}, {Type: "int", Name: "level"}, {Type: "int", Name: "optname"}, {Type: "char*", Name: "optval"}, {Type: "int*", Name: "optlen"}},
+	CloneEventID:               {{Type: "unsigned long", Name: "flags"}, {Type: "void*", Name: "stack"}, {Type: "int*", Name: "parent_tid"}, {Type: "int*", Name: "child_tid"}, {Type: "unsigned long", Name: "tls"}},
 	ForkEventID:                {},
 	VforkEventID:               {},
-	ExecveEventID:              {{pType: "const char*", pName: "pathname"}, {pType: "const char*const*", pName: "argv"}, {pType: "const char*const*", pName: "envp"}},
-	ExitEventID:                {{pType: "int", pName: "status"}},
-	Wait4EventID:               {{pType: "pid_t", pName: "pid"}, {pType: "int*", pName: "wstatus"}, {pType: "int", pName: "options"}, {pType: "struct rusage*", pName: "rusage"}},
-	KillEventID:                {{pType: "pid_t", pName: "pid"}, {pType: "int", pName: "sig"}},
-	UnameEventID:               {{pType: "struct utsname*", pName: "buf"}},
-	SemgetEventID:              {{pType: "key_t", pName: "key"}, {pType: "int", pName: "nsems"}, {pType: "int", pName: "semflg"}},
-	SemopEventID:               {{pType: "int", pName: "semid"}, {pType: "struct sembuf*", pName: "sops"}, {pType: "size_t", pName: "nsops"}},
-	SemctlEventID:              {{pType: "int", pName: "semid"}, {pType: "int", pName: "semnum"}, {pType: "int", pName: "cmd"}, {pType: "unsigned long", pName: "arg"}},
-	ShmdtEventID:               {{pType: "const void*", pName: "shmaddr"}},
-	MsggetEventID:              {{pType: "key_t", pName: "key"}, {pType: "int", pName: "msgflg"}},
-	MsgsndEventID:              {{pType: "int", pName: "msqid"}, {pType: "struct msgbuf*", pName: "msgp"}, {pType: "size_t", pName: "msgsz"}, {pType: "int", pName: "msgflg"}},
-	MsgrcvEventID:              {{pType: "int", pName: "msqid"}, {pType: "struct msgbuf*", pName: "msgp"}, {pType: "size_t", pName: "msgsz"}, {pType: "long", pName: "msgtyp"}, {pType: "int", pName: "msgflg"}},
-	MsgctlEventID:              {{pType: "int", pName: "msqid"}, {pType: "int", pName: "cmd"}, {pType: "struct msqid_ds*", pName: "buf"}},
-	FcntlEventID:               {{pType: "int", pName: "fd"}, {pType: "int", pName: "cmd"}, {pType: "unsigned long", pName: "arg"}},
-	FlockEventID:               {{pType: "int", pName: "fd"}, {pType: "int", pName: "operation"}},
-	FsyncEventID:               {{pType: "int", pName: "fd"}},
-	FdatasyncEventID:           {{pType: "int", pName: "fd"}},
-	TruncateEventID:            {{pType: "const char*", pName: "path"}, {pType: "off_t", pName: "length"}},
-	FtruncateEventID:           {{pType: "int", pName: "fd"}, {pType: "off_t", pName: "length"}},
-	GetdentsEventID:            {{pType: "int", pName: "fd"}, {pType: "struct linux_dirent*", pName: "dirp"}, {pType: "unsigned int", pName: "count"}},
-	GetcwdEventID:              {{pType: "char*", pName: "buf"}, {pType: "size_t", pName: "size"}},
-	ChdirEventID:               {{pType: "const char*", pName: "path"}},
-	FchdirEventID:              {{pType: "int", pName: "fd"}},
-	RenameEventID:              {{pType: "const char*", pName: "oldpath"}, {pType: "const char*", pName: "newpath"}},
-	MkdirEventID:               {{pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}},
-	RmdirEventID:               {{pType: "const char*", pName: "pathname"}},
-	CreatEventID:               {{pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}},
-	LinkEventID:                {{pType: "const char*", pName: "oldpath"}, {pType: "const char*", pName: "newpath"}},
-	UnlinkEventID:              {{pType: "const char*", pName: "pathname"}},
-	SymlinkEventID:             {{pType: "const char*", pName: "target"}, {pType: "const char*", pName: "linkpath"}},
-	ReadlinkEventID:            {{pType: "const char*", pName: "pathname"}, {pType: "char*", pName: "buf"}, {pType: "size_t", pName: "bufsiz"}},
-	ChmodEventID:               {{pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}},
-	FchmodEventID:              {{pType: "int", pName: "fd"}, {pType: "mode_t", pName: "mode"}},
-	ChownEventID:               {{pType: "const char*", pName: "pathname"}, {pType: "uid_t", pName: "owner"}, {pType: "gid_t", pName: "group"}},
-	FchownEventID:              {{pType: "int", pName: "fd"}, {pType: "uid_t", pName: "owner"}, {pType: "gid_t", pName: "group"}},
-	LchownEventID:              {{pType: "const char*", pName: "pathname"}, {pType: "uid_t", pName: "owner"}, {pType: "gid_t", pName: "group"}},
-	UmaskEventID:               {{pType: "mode_t", pName: "mask"}},
-	GettimeofdayEventID:        {{pType: "struct timeval*", pName: "tv"}, {pType: "struct timezone*", pName: "tz"}},
-	GetrlimitEventID:           {{pType: "int", pName: "resource"}, {pType: "struct rlimit*", pName: "rlim"}},
-	GetrusageEventID:           {{pType: "int", pName: "who"}, {pType: "struct rusage*", pName: "usage"}},
-	SysinfoEventID:             {{pType: "struct sysinfo*", pName: "info"}},
-	TimesEventID:               {{pType: "struct tms*", pName: "buf"}},
-	PtraceEventID:              {{pType: "long", pName: "request"}, {pType: "pid_t", pName: "pid"}, {pType: "void*", pName: "addr"}, {pType: "void*", pName: "data"}},
+	ExecveEventID:              {{Type: "const char*", Name: "pathname"}, {Type: "const char*const*", Name: "argv"}, {Type: "const char*const*", Name: "envp"}},
+	ExitEventID:                {{Type: "int", Name: "status"}},
+	Wait4EventID:               {{Type: "pid_t", Name: "pid"}, {Type: "int*", Name: "wstatus"}, {Type: "int", Name: "options"}, {Type: "struct rusage*", Name: "rusage"}},
+	KillEventID:                {{Type: "pid_t", Name: "pid"}, {Type: "int", Name: "sig"}},
+	UnameEventID:               {{Type: "struct utsname*", Name: "buf"}},
+	SemgetEventID:              {{Type: "key_t", Name: "key"}, {Type: "int", Name: "nsems"}, {Type: "int", Name: "semflg"}},
+	SemopEventID:               {{Type: "int", Name: "semid"}, {Type: "struct sembuf*", Name: "sops"}, {Type: "size_t", Name: "nsops"}},
+	SemctlEventID:              {{Type: "int", Name: "semid"}, {Type: "int", Name: "semnum"}, {Type: "int", Name: "cmd"}, {Type: "unsigned long", Name: "arg"}},
+	ShmdtEventID:               {{Type: "const void*", Name: "shmaddr"}},
+	MsggetEventID:              {{Type: "key_t", Name: "key"}, {Type: "int", Name: "msgflg"}},
+	MsgsndEventID:              {{Type: "int", Name: "msqid"}, {Type: "struct msgbuf*", Name: "msgp"}, {Type: "size_t", Name: "msgsz"}, {Type: "int", Name: "msgflg"}},
+	MsgrcvEventID:              {{Type: "int", Name: "msqid"}, {Type: "struct msgbuf*", Name: "msgp"}, {Type: "size_t", Name: "msgsz"}, {Type: "long", Name: "msgtyp"}, {Type: "int", Name: "msgflg"}},
+	MsgctlEventID:              {{Type: "int", Name: "msqid"}, {Type: "int", Name: "cmd"}, {Type: "struct msqid_ds*", Name: "buf"}},
+	FcntlEventID:               {{Type: "int", Name: "fd"}, {Type: "int", Name: "cmd"}, {Type: "unsigned long", Name: "arg"}},
+	FlockEventID:               {{Type: "int", Name: "fd"}, {Type: "int", Name: "operation"}},
+	FsyncEventID:               {{Type: "int", Name: "fd"}},
+	FdatasyncEventID:           {{Type: "int", Name: "fd"}},
+	TruncateEventID:            {{Type: "const char*", Name: "path"}, {Type: "off_t", Name: "length"}},
+	FtruncateEventID:           {{Type: "int", Name: "fd"}, {Type: "off_t", Name: "length"}},
+	GetdentsEventID:            {{Type: "int", Name: "fd"}, {Type: "struct linux_dirent*", Name: "dirp"}, {Type: "unsigned int", Name: "count"}},
+	GetcwdEventID:              {{Type: "char*", Name: "buf"}, {Type: "size_t", Name: "size"}},
+	ChdirEventID:               {{Type: "const char*", Name: "path"}},
+	FchdirEventID:              {{Type: "int", Name: "fd"}},
+	RenameEventID:              {{Type: "const char*", Name: "oldpath"}, {Type: "const char*", Name: "newpath"}},
+	MkdirEventID:               {{Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}},
+	RmdirEventID:               {{Type: "const char*", Name: "pathname"}},
+	CreatEventID:               {{Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}},
+	LinkEventID:                {{Type: "const char*", Name: "oldpath"}, {Type: "const char*", Name: "newpath"}},
+	UnlinkEventID:              {{Type: "const char*", Name: "pathname"}},
+	SymlinkEventID:             {{Type: "const char*", Name: "target"}, {Type: "const char*", Name: "linkpath"}},
+	ReadlinkEventID:            {{Type: "const char*", Name: "pathname"}, {Type: "char*", Name: "buf"}, {Type: "size_t", Name: "bufsiz"}},
+	ChmodEventID:               {{Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}},
+	FchmodEventID:              {{Type: "int", Name: "fd"}, {Type: "mode_t", Name: "mode"}},
+	ChownEventID:               {{Type: "const char*", Name: "pathname"}, {Type: "uid_t", Name: "owner"}, {Type: "gid_t", Name: "group"}},
+	FchownEventID:              {{Type: "int", Name: "fd"}, {Type: "uid_t", Name: "owner"}, {Type: "gid_t", Name: "group"}},
+	LchownEventID:              {{Type: "const char*", Name: "pathname"}, {Type: "uid_t", Name: "owner"}, {Type: "gid_t", Name: "group"}},
+	UmaskEventID:               {{Type: "mode_t", Name: "mask"}},
+	GettimeofdayEventID:        {{Type: "struct timeval*", Name: "tv"}, {Type: "struct timezone*", Name: "tz"}},
+	GetrlimitEventID:           {{Type: "int", Name: "resource"}, {Type: "struct rlimit*", Name: "rlim"}},
+	GetrusageEventID:           {{Type: "int", Name: "who"}, {Type: "struct rusage*", Name: "usage"}},
+	SysinfoEventID:             {{Type: "struct sysinfo*", Name: "info"}},
+	TimesEventID:               {{Type: "struct tms*", Name: "buf"}},
+	PtraceEventID:              {{Type: "long", Name: "request"}, {Type: "pid_t", Name: "pid"}, {Type: "void*", Name: "addr"}, {Type: "void*", Name: "data"}},
 	GetuidEventID:              {},
-	SyslogEventID:              {{pType: "int", pName: "type"}, {pType: "char*", pName: "bufp"}, {pType: "int", pName: "len"}},
+	SyslogEventID:              {{Type: "int", Name: "type"}, {Type: "char*", Name: "bufp"}, {Type: "int", Name: "len"}},
 	GetgidEventID:              {},
-	SetuidEventID:              {{pType: "uid_t", pName: "uid"}},
-	SetgidEventID:              {{pType: "gid_t", pName: "gid"}},
+	SetuidEventID:              {{Type: "uid_t", Name: "uid"}},
+	SetgidEventID:              {{Type: "gid_t", Name: "gid"}},
 	GeteuidEventID:             {},
 	GetegidEventID:             {},
-	SetpgidEventID:             {{pType: "pid_t", pName: "pid"}, {pType: "pid_t", pName: "pgid"}},
+	SetpgidEventID:             {{Type: "pid_t", Name: "pid"}, {Type: "pid_t", Name: "pgid"}},
 	GetppidEventID:             {},
 	GetpgrpEventID:             {},
 	SetsidEventID:              {},
-	SetreuidEventID:            {{pType: "uid_t", pName: "ruid"}, {pType: "uid_t", pName: "euid"}},
-	SetregidEventID:            {{pType: "gid_t", pName: "rgid"}, {pType: "gid_t", pName: "egid"}},
-	GetgroupsEventID:           {{pType: "int", pName: "size"}, {pType: "gid_t*", pName: "list"}},
-	SetgroupsEventID:           {{pType: "int", pName: "size"}, {pType: "gid_t*", pName: "list"}},
-	SetresuidEventID:           {{pType: "uid_t", pName: "ruid"}, {pType: "uid_t", pName: "euid"}, {pType: "uid_t", pName: "suid"}},
-	GetresuidEventID:           {{pType: "uid_t*", pName: "ruid"}, {pType: "uid_t*", pName: "euid"}, {pType: "uid_t*", pName: "suid"}},
-	SetresgidEventID:           {{pType: "gid_t", pName: "rgid"}, {pType: "gid_t", pName: "egid"}, {pType: "gid_t", pName: "sgid"}},
-	GetresgidEventID:           {{pType: "gid_t*", pName: "rgid"}, {pType: "gid_t*", pName: "egid"}, {pType: "gid_t*", pName: "sgid"}},
-	GetpgidEventID:             {{pType: "pid_t", pName: "pid"}},
-	SetfsuidEventID:            {{pType: "uid_t", pName: "fsuid"}},
-	SetfsgidEventID:            {{pType: "gid_t", pName: "fsgid"}},
-	GetsidEventID:              {{pType: "pid_t", pName: "pid"}},
-	CapgetEventID:              {{pType: "cap_user_header_t", pName: "hdrp"}, {pType: "cap_user_data_t", pName: "datap"}},
-	CapsetEventID:              {{pType: "cap_user_header_t", pName: "hdrp"}, {pType: "const cap_user_data_t", pName: "datap"}},
-	RtSigpendingEventID:        {{pType: "sigset_t*", pName: "set"}, {pType: "size_t", pName: "sigsetsize"}},
-	RtSigtimedwaitEventID:      {{pType: "const sigset_t*", pName: "set"}, {pType: "siginfo_t*", pName: "info"}, {pType: "const struct timespec*", pName: "timeout"}, {pType: "size_t", pName: "sigsetsize"}},
-	RtSigqueueinfoEventID:      {{pType: "pid_t", pName: "tgid"}, {pType: "int", pName: "sig"}, {pType: "siginfo_t*", pName: "info"}},
-	RtSigsuspendEventID:        {{pType: "sigset_t*", pName: "mask"}, {pType: "size_t", pName: "sigsetsize"}},
-	SigaltstackEventID:         {{pType: "const stack_t*", pName: "ss"}, {pType: "stack_t*", pName: "old_ss"}},
-	UtimeEventID:               {{pType: "const char*", pName: "filename"}, {pType: "const struct utimbuf*", pName: "times"}},
-	MknodEventID:               {{pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}, {pType: "dev_t", pName: "dev"}},
-	UselibEventID:              {{pType: "const char*", pName: "library"}},
-	PersonalityEventID:         {{pType: "unsigned long", pName: "persona"}},
-	UstatEventID:               {{pType: "dev_t", pName: "dev"}, {pType: "struct ustat*", pName: "ubuf"}},
-	StatfsEventID:              {{pType: "const char*", pName: "path"}, {pType: "struct statfs*", pName: "buf"}},
-	FstatfsEventID:             {{pType: "int", pName: "fd"}, {pType: "struct statfs*", pName: "buf"}},
-	SysfsEventID:               {{pType: "int", pName: "option"}},
-	GetpriorityEventID:         {{pType: "int", pName: "which"}, {pType: "int", pName: "who"}},
-	SetpriorityEventID:         {{pType: "int", pName: "which"}, {pType: "int", pName: "who"}, {pType: "int", pName: "prio"}},
-	SchedSetparamEventID:       {{pType: "pid_t", pName: "pid"}, {pType: "struct sched_param*", pName: "param"}},
-	SchedGetparamEventID:       {{pType: "pid_t", pName: "pid"}, {pType: "struct sched_param*", pName: "param"}},
-	SchedSetschedulerEventID:   {{pType: "pid_t", pName: "pid"}, {pType: "int", pName: "policy"}, {pType: "struct sched_param*", pName: "param"}},
-	SchedGetschedulerEventID:   {{pType: "pid_t", pName: "pid"}},
-	SchedGetPriorityMaxEventID: {{pType: "int", pName: "policy"}},
-	SchedGetPriorityMinEventID: {{pType: "int", pName: "policy"}},
-	SchedRrGetIntervalEventID:  {{pType: "pid_t", pName: "pid"}, {pType: "struct timespec*", pName: "tp"}},
-	MlockEventID:               {{pType: "const void*", pName: "addr"}, {pType: "size_t", pName: "len"}},
-	MunlockEventID:             {{pType: "const void*", pName: "addr"}, {pType: "size_t", pName: "len"}},
-	MlockallEventID:            {{pType: "int", pName: "flags"}},
+	SetreuidEventID:            {{Type: "uid_t", Name: "ruid"}, {Type: "uid_t", Name: "euid"}},
+	SetregidEventID:            {{Type: "gid_t", Name: "rgid"}, {Type: "gid_t", Name: "egid"}},
+	GetgroupsEventID:           {{Type: "int", Name: "size"}, {Type: "gid_t*", Name: "list"}},
+	SetgroupsEventID:           {{Type: "int", Name: "size"}, {Type: "gid_t*", Name: "list"}},
+	SetresuidEventID:           {{Type: "uid_t", Name: "ruid"}, {Type: "uid_t", Name: "euid"}, {Type: "uid_t", Name: "suid"}},
+	GetresuidEventID:           {{Type: "uid_t*", Name: "ruid"}, {Type: "uid_t*", Name: "euid"}, {Type: "uid_t*", Name: "suid"}},
+	SetresgidEventID:           {{Type: "gid_t", Name: "rgid"}, {Type: "gid_t", Name: "egid"}, {Type: "gid_t", Name: "sgid"}},
+	GetresgidEventID:           {{Type: "gid_t*", Name: "rgid"}, {Type: "gid_t*", Name: "egid"}, {Type: "gid_t*", Name: "sgid"}},
+	GetpgidEventID:             {{Type: "pid_t", Name: "pid"}},
+	SetfsuidEventID:            {{Type: "uid_t", Name: "fsuid"}},
+	SetfsgidEventID:            {{Type: "gid_t", Name: "fsgid"}},
+	GetsidEventID:              {{Type: "pid_t", Name: "pid"}},
+	CapgetEventID:              {{Type: "cap_user_header_t", Name: "hdrp"}, {Type: "cap_user_data_t", Name: "datap"}},
+	CapsetEventID:              {{Type: "cap_user_header_t", Name: "hdrp"}, {Type: "const cap_user_data_t", Name: "datap"}},
+	RtSigpendingEventID:        {{Type: "sigset_t*", Name: "set"}, {Type: "size_t", Name: "sigsetsize"}},
+	RtSigtimedwaitEventID:      {{Type: "const sigset_t*", Name: "set"}, {Type: "siginfo_t*", Name: "info"}, {Type: "const struct timespec*", Name: "timeout"}, {Type: "size_t", Name: "sigsetsize"}},
+	RtSigqueueinfoEventID:      {{Type: "pid_t", Name: "tgid"}, {Type: "int", Name: "sig"}, {Type: "siginfo_t*", Name: "info"}},
+	RtSigsuspendEventID:        {{Type: "sigset_t*", Name: "mask"}, {Type: "size_t", Name: "sigsetsize"}},
+	SigaltstackEventID:         {{Type: "const stack_t*", Name: "ss"}, {Type: "stack_t*", Name: "old_ss"}},
+	UtimeEventID:               {{Type: "const char*", Name: "filename"}, {Type: "const struct utimbuf*", Name: "times"}},
+	MknodEventID:               {{Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}, {Type: "dev_t", Name: "dev"}},
+	UselibEventID:              {{Type: "const char*", Name: "library"}},
+	PersonalityEventID:         {{Type: "unsigned long", Name: "persona"}},
+	UstatEventID:               {{Type: "dev_t", Name: "dev"}, {Type: "struct ustat*", Name: "ubuf"}},
+	StatfsEventID:              {{Type: "const char*", Name: "path"}, {Type: "struct statfs*", Name: "buf"}},
+	FstatfsEventID:             {{Type: "int", Name: "fd"}, {Type: "struct statfs*", Name: "buf"}},
+	SysfsEventID:               {{Type: "int", Name: "option"}},
+	GetpriorityEventID:         {{Type: "int", Name: "which"}, {Type: "int", Name: "who"}},
+	SetpriorityEventID:         {{Type: "int", Name: "which"}, {Type: "int", Name: "who"}, {Type: "int", Name: "prio"}},
+	SchedSetparamEventID:       {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_param*", Name: "external.ArgMeta"}},
+	SchedGetparamEventID:       {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_param*", Name: "external.ArgMeta"}},
+	SchedSetschedulerEventID:   {{Type: "pid_t", Name: "pid"}, {Type: "int", Name: "policy"}, {Type: "struct sched_param*", Name: "external.ArgMeta"}},
+	SchedGetschedulerEventID:   {{Type: "pid_t", Name: "pid"}},
+	SchedGetPriorityMaxEventID: {{Type: "int", Name: "policy"}},
+	SchedGetPriorityMinEventID: {{Type: "int", Name: "policy"}},
+	SchedRrGetIntervalEventID:  {{Type: "pid_t", Name: "pid"}, {Type: "struct timespec*", Name: "tp"}},
+	MlockEventID:               {{Type: "const void*", Name: "addr"}, {Type: "size_t", Name: "len"}},
+	MunlockEventID:             {{Type: "const void*", Name: "addr"}, {Type: "size_t", Name: "len"}},
+	MlockallEventID:            {{Type: "int", Name: "flags"}},
 	MunlockallEventID:          {},
 	VhangupEventID:             {},
-	ModifyLdtEventID:           {{pType: "int", pName: "func"}, {pType: "void*", pName: "ptr"}, {pType: "unsigned long", pName: "bytecount"}},
-	PivotRootEventID:           {{pType: "const char*", pName: "new_root"}, {pType: "const char*", pName: "put_old"}},
-	SysctlEventID:              {{pType: "struct __sysctl_args*", pName: "args"}},
-	PrctlEventID:               {{pType: "int", pName: "option"}, {pType: "unsigned long", pName: "arg2"}, {pType: "unsigned long", pName: "arg3"}, {pType: "unsigned long", pName: "arg4"}, {pType: "unsigned long", pName: "arg5"}},
-	ArchPrctlEventID:           {{pType: "int", pName: "option"}, {pType: "unsigned long", pName: "addr"}},
-	AdjtimexEventID:            {{pType: "struct timex*", pName: "buf"}},
-	SetrlimitEventID:           {{pType: "int", pName: "resource"}, {pType: "const struct rlimit*", pName: "rlim"}},
-	ChrootEventID:              {{pType: "const char*", pName: "path"}},
+	ModifyLdtEventID:           {{Type: "int", Name: "func"}, {Type: "void*", Name: "ptr"}, {Type: "unsigned long", Name: "bytecount"}},
+	PivotRootEventID:           {{Type: "const char*", Name: "new_root"}, {Type: "const char*", Name: "put_old"}},
+	SysctlEventID:              {{Type: "struct __sysctl_args*", Name: "args"}},
+	PrctlEventID:               {{Type: "int", Name: "option"}, {Type: "unsigned long", Name: "arg2"}, {Type: "unsigned long", Name: "arg3"}, {Type: "unsigned long", Name: "arg4"}, {Type: "unsigned long", Name: "arg5"}},
+	ArchPrctlEventID:           {{Type: "int", Name: "option"}, {Type: "unsigned long", Name: "addr"}},
+	AdjtimexEventID:            {{Type: "struct timex*", Name: "buf"}},
+	SetrlimitEventID:           {{Type: "int", Name: "resource"}, {Type: "const struct rlimit*", Name: "rlim"}},
+	ChrootEventID:              {{Type: "const char*", Name: "path"}},
 	SyncEventID:                {},
-	AcctEventID:                {{pType: "const char*", pName: "filename"}},
-	SettimeofdayEventID:        {{pType: "const struct timeval*", pName: "tv"}, {pType: "const struct timezone*", pName: "tz"}},
-	MountEventID:               {{pType: "const char*", pName: "source"}, {pType: "const char*", pName: "target"}, {pType: "const char*", pName: "filesystemtype"}, {pType: "unsigned long", pName: "mountflags"}, {pType: "const void*", pName: "data"}},
-	UmountEventID:              {{pType: "const char*", pName: "target"}, {pType: "int", pName: "flags"}},
-	SwaponEventID:              {{pType: "const char*", pName: "path"}, {pType: "int", pName: "swapflags"}},
-	SwapoffEventID:             {{pType: "const char*", pName: "path"}},
-	RebootEventID:              {{pType: "int", pName: "magic"}, {pType: "int", pName: "magic2"}, {pType: "int", pName: "cmd"}, {pType: "void*", pName: "arg"}},
-	SethostnameEventID:         {{pType: "const char*", pName: "name"}, {pType: "size_t", pName: "len"}},
-	SetdomainnameEventID:       {{pType: "const char*", pName: "name"}, {pType: "size_t", pName: "len"}},
-	IoplEventID:                {{pType: "int", pName: "level"}},
-	IopermEventID:              {{pType: "unsigned long", pName: "from"}, {pType: "unsigned long", pName: "num"}, {pType: "int", pName: "turn_on"}},
-	InitModuleEventID:          {{pType: "void*", pName: "module_image"}, {pType: "unsigned long", pName: "len"}, {pType: "const char*", pName: "param_values"}},
-	DeleteModuleEventID:        {{pType: "const char*", pName: "name"}, {pType: "int", pName: "flags"}},
-	QuotactlEventID:            {{pType: "int", pName: "cmd"}, {pType: "const char*", pName: "special"}, {pType: "int", pName: "id"}, {pType: "void*", pName: "addr"}},
+	AcctEventID:                {{Type: "const char*", Name: "filename"}},
+	SettimeofdayEventID:        {{Type: "const struct timeval*", Name: "tv"}, {Type: "const struct timezone*", Name: "tz"}},
+	MountEventID:               {{Type: "const char*", Name: "source"}, {Type: "const char*", Name: "target"}, {Type: "const char*", Name: "filesystemtype"}, {Type: "unsigned long", Name: "mountflags"}, {Type: "const void*", Name: "data"}},
+	UmountEventID:              {{Type: "const char*", Name: "target"}, {Type: "int", Name: "flags"}},
+	SwaponEventID:              {{Type: "const char*", Name: "path"}, {Type: "int", Name: "swapflags"}},
+	SwapoffEventID:             {{Type: "const char*", Name: "path"}},
+	RebootEventID:              {{Type: "int", Name: "magic"}, {Type: "int", Name: "magic2"}, {Type: "int", Name: "cmd"}, {Type: "void*", Name: "arg"}},
+	SethostnameEventID:         {{Type: "const char*", Name: "name"}, {Type: "size_t", Name: "len"}},
+	SetdomainnameEventID:       {{Type: "const char*", Name: "name"}, {Type: "size_t", Name: "len"}},
+	IoplEventID:                {{Type: "int", Name: "level"}},
+	IopermEventID:              {{Type: "unsigned long", Name: "from"}, {Type: "unsigned long", Name: "num"}, {Type: "int", Name: "turn_on"}},
+	InitModuleEventID:          {{Type: "void*", Name: "module_image"}, {Type: "unsigned long", Name: "len"}, {Type: "const char*", Name: "param_values"}},
+	DeleteModuleEventID:        {{Type: "const char*", Name: "name"}, {Type: "int", Name: "flags"}},
+	QuotactlEventID:            {{Type: "int", Name: "cmd"}, {Type: "const char*", Name: "special"}, {Type: "int", Name: "id"}, {Type: "void*", Name: "addr"}},
 	GettidEventID:              {},
-	ReadaheadEventID:           {{pType: "int", pName: "fd"}, {pType: "off_t", pName: "offset"}, {pType: "size_t", pName: "count"}},
-	SetxattrEventID:            {{pType: "const char*", pName: "path"}, {pType: "const char*", pName: "name"}, {pType: "const void*", pName: "value"}, {pType: "size_t", pName: "size"}, {pType: "int", pName: "flags"}},
-	LsetxattrEventID:           {{pType: "const char*", pName: "path"}, {pType: "const char*", pName: "name"}, {pType: "const void*", pName: "value"}, {pType: "size_t", pName: "size"}, {pType: "int", pName: "flags"}},
-	FsetxattrEventID:           {{pType: "int", pName: "fd"}, {pType: "const char*", pName: "name"}, {pType: "const void*", pName: "value"}, {pType: "size_t", pName: "size"}, {pType: "int", pName: "flags"}},
-	GetxattrEventID:            {{pType: "const char*", pName: "path"}, {pType: "const char*", pName: "name"}, {pType: "void*", pName: "value"}, {pType: "size_t", pName: "size"}},
-	LgetxattrEventID:           {{pType: "const char*", pName: "path"}, {pType: "const char*", pName: "name"}, {pType: "void*", pName: "value"}, {pType: "size_t", pName: "size"}},
-	FgetxattrEventID:           {{pType: "int", pName: "fd"}, {pType: "const char*", pName: "name"}, {pType: "void*", pName: "value"}, {pType: "size_t", pName: "size"}},
-	ListxattrEventID:           {{pType: "const char*", pName: "path"}, {pType: "char*", pName: "list"}, {pType: "size_t", pName: "size"}},
-	LlistxattrEventID:          {{pType: "const char*", pName: "path"}, {pType: "char*", pName: "list"}, {pType: "size_t", pName: "size"}},
-	FlistxattrEventID:          {{pType: "int", pName: "fd"}, {pType: "char*", pName: "list"}, {pType: "size_t", pName: "size"}},
-	RemovexattrEventID:         {{pType: "const char*", pName: "path"}, {pType: "const char*", pName: "name"}},
-	LremovexattrEventID:        {{pType: "const char*", pName: "path"}, {pType: "const char*", pName: "name"}},
-	FremovexattrEventID:        {{pType: "int", pName: "fd"}, {pType: "const char*", pName: "name"}},
-	TkillEventID:               {{pType: "int", pName: "tid"}, {pType: "int", pName: "sig"}},
-	TimeEventID:                {{pType: "time_t*", pName: "tloc"}},
-	FutexEventID:               {{pType: "int*", pName: "uaddr"}, {pType: "int", pName: "futex_op"}, {pType: "int", pName: "val"}, {pType: "const struct timespec*", pName: "timeout"}, {pType: "int*", pName: "uaddr2"}, {pType: "int", pName: "val3"}},
-	SchedSetaffinityEventID:    {{pType: "pid_t", pName: "pid"}, {pType: "size_t", pName: "cpusetsize"}, {pType: "unsigned long*", pName: "mask"}},
-	SchedGetaffinityEventID:    {{pType: "pid_t", pName: "pid"}, {pType: "size_t", pName: "cpusetsize"}, {pType: "unsigned long*", pName: "mask"}},
-	SetThreadAreaEventID:       {{pType: "struct user_desc*", pName: "u_info"}},
-	IoSetupEventID:             {{pType: "unsigned int", pName: "nr_events"}, {pType: "io_context_t*", pName: "ctx_idp"}},
-	IoDestroyEventID:           {{pType: "io_context_t", pName: "ctx_id"}},
-	IoGeteventsEventID:         {{pType: "io_context_t", pName: "ctx_id"}, {pType: "long", pName: "min_nr"}, {pType: "long", pName: "nr"}, {pType: "struct io_event*", pName: "events"}, {pType: "struct timespec*", pName: "timeout"}},
-	IoSubmitEventID:            {{pType: "io_context_t", pName: "ctx_id"}, {pType: "long", pName: "nr"}, {pType: "struct iocb**", pName: "iocbpp"}},
-	IoCancelEventID:            {{pType: "io_context_t", pName: "ctx_id"}, {pType: "struct iocb*", pName: "iocb"}, {pType: "struct io_event*", pName: "result"}},
-	GetThreadAreaEventID:       {{pType: "struct user_desc*", pName: "u_info"}},
-	LookupDcookieEventID:       {{pType: "u64", pName: "cookie"}, {pType: "char*", pName: "buffer"}, {pType: "size_t", pName: "len"}},
-	EpollCreateEventID:         {{pType: "int", pName: "size"}},
-	RemapFilePagesEventID:      {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "size"}, {pType: "int", pName: "prot"}, {pType: "size_t", pName: "pgoff"}, {pType: "int", pName: "flags"}},
-	Getdents64EventID:          {{pType: "unsigned int", pName: "fd"}, {pType: "struct linux_dirent64*", pName: "dirp"}, {pType: "unsigned int", pName: "count"}},
-	SetTidAddressEventID:       {{pType: "int*", pName: "tidptr"}},
+	ReadaheadEventID:           {{Type: "int", Name: "fd"}, {Type: "off_t", Name: "offset"}, {Type: "size_t", Name: "count"}},
+	SetxattrEventID:            {{Type: "const char*", Name: "path"}, {Type: "const char*", Name: "name"}, {Type: "const void*", Name: "value"}, {Type: "size_t", Name: "size"}, {Type: "int", Name: "flags"}},
+	LsetxattrEventID:           {{Type: "const char*", Name: "path"}, {Type: "const char*", Name: "name"}, {Type: "const void*", Name: "value"}, {Type: "size_t", Name: "size"}, {Type: "int", Name: "flags"}},
+	FsetxattrEventID:           {{Type: "int", Name: "fd"}, {Type: "const char*", Name: "name"}, {Type: "const void*", Name: "value"}, {Type: "size_t", Name: "size"}, {Type: "int", Name: "flags"}},
+	GetxattrEventID:            {{Type: "const char*", Name: "path"}, {Type: "const char*", Name: "name"}, {Type: "void*", Name: "value"}, {Type: "size_t", Name: "size"}},
+	LgetxattrEventID:           {{Type: "const char*", Name: "path"}, {Type: "const char*", Name: "name"}, {Type: "void*", Name: "value"}, {Type: "size_t", Name: "size"}},
+	FgetxattrEventID:           {{Type: "int", Name: "fd"}, {Type: "const char*", Name: "name"}, {Type: "void*", Name: "value"}, {Type: "size_t", Name: "size"}},
+	ListxattrEventID:           {{Type: "const char*", Name: "path"}, {Type: "char*", Name: "list"}, {Type: "size_t", Name: "size"}},
+	LlistxattrEventID:          {{Type: "const char*", Name: "path"}, {Type: "char*", Name: "list"}, {Type: "size_t", Name: "size"}},
+	FlistxattrEventID:          {{Type: "int", Name: "fd"}, {Type: "char*", Name: "list"}, {Type: "size_t", Name: "size"}},
+	RemovexattrEventID:         {{Type: "const char*", Name: "path"}, {Type: "const char*", Name: "name"}},
+	LremovexattrEventID:        {{Type: "const char*", Name: "path"}, {Type: "const char*", Name: "name"}},
+	FremovexattrEventID:        {{Type: "int", Name: "fd"}, {Type: "const char*", Name: "name"}},
+	TkillEventID:               {{Type: "int", Name: "tid"}, {Type: "int", Name: "sig"}},
+	TimeEventID:                {{Type: "time_t*", Name: "tloc"}},
+	FutexEventID:               {{Type: "int*", Name: "uaddr"}, {Type: "int", Name: "futex_op"}, {Type: "int", Name: "val"}, {Type: "const struct timespec*", Name: "timeout"}, {Type: "int*", Name: "uaddr2"}, {Type: "int", Name: "val3"}},
+	SchedSetaffinityEventID:    {{Type: "pid_t", Name: "pid"}, {Type: "size_t", Name: "cpusetsize"}, {Type: "unsigned long*", Name: "mask"}},
+	SchedGetaffinityEventID:    {{Type: "pid_t", Name: "pid"}, {Type: "size_t", Name: "cpusetsize"}, {Type: "unsigned long*", Name: "mask"}},
+	SetThreadAreaEventID:       {{Type: "struct user_desc*", Name: "u_info"}},
+	IoSetupEventID:             {{Type: "unsigned int", Name: "nr_events"}, {Type: "io_context_t*", Name: "ctx_idp"}},
+	IoDestroyEventID:           {{Type: "io_context_t", Name: "ctx_id"}},
+	IoGeteventsEventID:         {{Type: "io_context_t", Name: "ctx_id"}, {Type: "long", Name: "min_nr"}, {Type: "long", Name: "nr"}, {Type: "struct io_event*", Name: "events"}, {Type: "struct timespec*", Name: "timeout"}},
+	IoSubmitEventID:            {{Type: "io_context_t", Name: "ctx_id"}, {Type: "long", Name: "nr"}, {Type: "struct iocb**", Name: "iocbpp"}},
+	IoCancelEventID:            {{Type: "io_context_t", Name: "ctx_id"}, {Type: "struct iocb*", Name: "iocb"}, {Type: "struct io_event*", Name: "result"}},
+	GetThreadAreaEventID:       {{Type: "struct user_desc*", Name: "u_info"}},
+	LookupDcookieEventID:       {{Type: "u64", Name: "cookie"}, {Type: "char*", Name: "buffer"}, {Type: "size_t", Name: "len"}},
+	EpollCreateEventID:         {{Type: "int", Name: "size"}},
+	RemapFilePagesEventID:      {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "size"}, {Type: "int", Name: "prot"}, {Type: "size_t", Name: "pgoff"}, {Type: "int", Name: "flags"}},
+	Getdents64EventID:          {{Type: "unsigned int", Name: "fd"}, {Type: "struct linux_dirent64*", Name: "dirp"}, {Type: "unsigned int", Name: "count"}},
+	SetTidAddressEventID:       {{Type: "int*", Name: "tidptr"}},
 	RestartSyscallEventID:      {},
-	SemtimedopEventID:          {{pType: "int", pName: "semid"}, {pType: "struct sembuf*", pName: "sops"}, {pType: "size_t", pName: "nsops"}, {pType: "const struct timespec*", pName: "timeout"}},
-	Fadvise64EventID:           {{pType: "int", pName: "fd"}, {pType: "off_t", pName: "offset"}, {pType: "size_t", pName: "len"}, {pType: "int", pName: "advice"}},
-	TimerCreateEventID:         {{pType: "const clockid_t", pName: "clockid"}, {pType: "struct sigevent*", pName: "sevp"}, {pType: "timer_t*", pName: "timer_id"}},
-	TimerSettimeEventID:        {{pType: "timer_t", pName: "timer_id"}, {pType: "int", pName: "flags"}, {pType: "const struct itimerspec*", pName: "new_value"}, {pType: "struct itimerspec*", pName: "old_value"}},
-	TimerGettimeEventID:        {{pType: "timer_t", pName: "timer_id"}, {pType: "struct itimerspec*", pName: "curr_value"}},
-	TimerGetoverrunEventID:     {{pType: "timer_t", pName: "timer_id"}},
-	TimerDeleteEventID:         {{pType: "timer_t", pName: "timer_id"}},
-	ClockSettimeEventID:        {{pType: "const clockid_t", pName: "clockid"}, {pType: "const struct timespec*", pName: "tp"}},
-	ClockGettimeEventID:        {{pType: "const clockid_t", pName: "clockid"}, {pType: "struct timespec*", pName: "tp"}},
-	ClockGetresEventID:         {{pType: "const clockid_t", pName: "clockid"}, {pType: "struct timespec*", pName: "res"}},
-	ClockNanosleepEventID:      {{pType: "const clockid_t", pName: "clockid"}, {pType: "int", pName: "flags"}, {pType: "const struct timespec*", pName: "request"}, {pType: "struct timespec*", pName: "remain"}},
-	ExitGroupEventID:           {{pType: "int", pName: "status"}},
-	EpollWaitEventID:           {{pType: "int", pName: "epfd"}, {pType: "struct epoll_event*", pName: "events"}, {pType: "int", pName: "maxevents"}, {pType: "int", pName: "timeout"}},
-	EpollCtlEventID:            {{pType: "int", pName: "epfd"}, {pType: "int", pName: "op"}, {pType: "int", pName: "fd"}, {pType: "struct epoll_event*", pName: "event"}},
-	TgkillEventID:              {{pType: "int", pName: "tgid"}, {pType: "int", pName: "tid"}, {pType: "int", pName: "sig"}},
-	UtimesEventID:              {{pType: "char*", pName: "filename"}, {pType: "struct timeval*", pName: "times"}},
-	MbindEventID:               {{pType: "void*", pName: "addr"}, {pType: "unsigned long", pName: "len"}, {pType: "int", pName: "mode"}, {pType: "const unsigned long*", pName: "nodemask"}, {pType: "unsigned long", pName: "maxnode"}, {pType: "unsigned int", pName: "flags"}},
-	SetMempolicyEventID:        {{pType: "int", pName: "mode"}, {pType: "const unsigned long*", pName: "nodemask"}, {pType: "unsigned long", pName: "maxnode"}},
-	GetMempolicyEventID:        {{pType: "int*", pName: "mode"}, {pType: "unsigned long*", pName: "nodemask"}, {pType: "unsigned long", pName: "maxnode"}, {pType: "void*", pName: "addr"}, {pType: "unsigned long", pName: "flags"}},
-	MqOpenEventID:              {{pType: "const char*", pName: "name"}, {pType: "int", pName: "oflag"}, {pType: "mode_t", pName: "mode"}, {pType: "struct mq_attr*", pName: "attr"}},
-	MqUnlinkEventID:            {{pType: "const char*", pName: "name"}},
-	MqTimedsendEventID:         {{pType: "mqd_t", pName: "mqdes"}, {pType: "const char*", pName: "msg_ptr"}, {pType: "size_t", pName: "msg_len"}, {pType: "unsigned int", pName: "msg_prio"}, {pType: "const struct timespec*", pName: "abs_timeout"}},
-	MqTimedreceiveEventID:      {{pType: "mqd_t", pName: "mqdes"}, {pType: "char*", pName: "msg_ptr"}, {pType: "size_t", pName: "msg_len"}, {pType: "unsigned int*", pName: "msg_prio"}, {pType: "const struct timespec*", pName: "abs_timeout"}},
-	MqNotifyEventID:            {{pType: "mqd_t", pName: "mqdes"}, {pType: "const struct sigevent*", pName: "sevp"}},
-	MqGetsetattrEventID:        {{pType: "mqd_t", pName: "mqdes"}, {pType: "const struct mq_attr*", pName: "newattr"}, {pType: "struct mq_attr*", pName: "oldattr"}},
-	KexecLoadEventID:           {{pType: "unsigned long", pName: "entry"}, {pType: "unsigned long", pName: "nr_segments"}, {pType: "struct kexec_segment*", pName: "segments"}, {pType: "unsigned long", pName: "flags"}},
-	WaitidEventID:              {{pType: "int", pName: "idtype"}, {pType: "pid_t", pName: "id"}, {pType: "struct siginfo*", pName: "infop"}, {pType: "int", pName: "options"}, {pType: "struct rusage*", pName: "rusage"}},
-	AddKeyEventID:              {{pType: "const char*", pName: "type"}, {pType: "const char*", pName: "description"}, {pType: "const void*", pName: "payload"}, {pType: "size_t", pName: "plen"}, {pType: "key_serial_t", pName: "keyring"}},
-	RequestKeyEventID:          {{pType: "const char*", pName: "type"}, {pType: "const char*", pName: "description"}, {pType: "const char*", pName: "callout_info"}, {pType: "key_serial_t", pName: "dest_keyring"}},
-	KeyctlEventID:              {{pType: "int", pName: "operation"}, {pType: "unsigned long", pName: "arg2"}, {pType: "unsigned long", pName: "arg3"}, {pType: "unsigned long", pName: "arg4"}, {pType: "unsigned long", pName: "arg5"}},
-	IoprioSetEventID:           {{pType: "int", pName: "which"}, {pType: "int", pName: "who"}, {pType: "int", pName: "ioprio"}},
-	IoprioGetEventID:           {{pType: "int", pName: "which"}, {pType: "int", pName: "who"}},
+	SemtimedopEventID:          {{Type: "int", Name: "semid"}, {Type: "struct sembuf*", Name: "sops"}, {Type: "size_t", Name: "nsops"}, {Type: "const struct timespec*", Name: "timeout"}},
+	Fadvise64EventID:           {{Type: "int", Name: "fd"}, {Type: "off_t", Name: "offset"}, {Type: "size_t", Name: "len"}, {Type: "int", Name: "advice"}},
+	TimerCreateEventID:         {{Type: "const clockid_t", Name: "clockid"}, {Type: "struct sigevent*", Name: "sevp"}, {Type: "timer_t*", Name: "timer_id"}},
+	TimerSettimeEventID:        {{Type: "timer_t", Name: "timer_id"}, {Type: "int", Name: "flags"}, {Type: "const struct itimerspec*", Name: "new_value"}, {Type: "struct itimerspec*", Name: "old_value"}},
+	TimerGettimeEventID:        {{Type: "timer_t", Name: "timer_id"}, {Type: "struct itimerspec*", Name: "curr_value"}},
+	TimerGetoverrunEventID:     {{Type: "timer_t", Name: "timer_id"}},
+	TimerDeleteEventID:         {{Type: "timer_t", Name: "timer_id"}},
+	ClockSettimeEventID:        {{Type: "const clockid_t", Name: "clockid"}, {Type: "const struct timespec*", Name: "tp"}},
+	ClockGettimeEventID:        {{Type: "const clockid_t", Name: "clockid"}, {Type: "struct timespec*", Name: "tp"}},
+	ClockGetresEventID:         {{Type: "const clockid_t", Name: "clockid"}, {Type: "struct timespec*", Name: "res"}},
+	ClockNanosleepEventID:      {{Type: "const clockid_t", Name: "clockid"}, {Type: "int", Name: "flags"}, {Type: "const struct timespec*", Name: "request"}, {Type: "struct timespec*", Name: "remain"}},
+	ExitGroupEventID:           {{Type: "int", Name: "status"}},
+	EpollWaitEventID:           {{Type: "int", Name: "epfd"}, {Type: "struct epoll_event*", Name: "events"}, {Type: "int", Name: "maxevents"}, {Type: "int", Name: "timeout"}},
+	EpollCtlEventID:            {{Type: "int", Name: "epfd"}, {Type: "int", Name: "op"}, {Type: "int", Name: "fd"}, {Type: "struct epoll_event*", Name: "event"}},
+	TgkillEventID:              {{Type: "int", Name: "tgid"}, {Type: "int", Name: "tid"}, {Type: "int", Name: "sig"}},
+	UtimesEventID:              {{Type: "char*", Name: "filename"}, {Type: "struct timeval*", Name: "times"}},
+	MbindEventID:               {{Type: "void*", Name: "addr"}, {Type: "unsigned long", Name: "len"}, {Type: "int", Name: "mode"}, {Type: "const unsigned long*", Name: "nodemask"}, {Type: "unsigned long", Name: "maxnode"}, {Type: "unsigned int", Name: "flags"}},
+	SetMempolicyEventID:        {{Type: "int", Name: "mode"}, {Type: "const unsigned long*", Name: "nodemask"}, {Type: "unsigned long", Name: "maxnode"}},
+	GetMempolicyEventID:        {{Type: "int*", Name: "mode"}, {Type: "unsigned long*", Name: "nodemask"}, {Type: "unsigned long", Name: "maxnode"}, {Type: "void*", Name: "addr"}, {Type: "unsigned long", Name: "flags"}},
+	MqOpenEventID:              {{Type: "const char*", Name: "name"}, {Type: "int", Name: "oflag"}, {Type: "mode_t", Name: "mode"}, {Type: "struct mq_attr*", Name: "attr"}},
+	MqUnlinkEventID:            {{Type: "const char*", Name: "name"}},
+	MqTimedsendEventID:         {{Type: "mqd_t", Name: "mqdes"}, {Type: "const char*", Name: "msg_ptr"}, {Type: "size_t", Name: "msg_len"}, {Type: "unsigned int", Name: "msg_prio"}, {Type: "const struct timespec*", Name: "abs_timeout"}},
+	MqTimedreceiveEventID:      {{Type: "mqd_t", Name: "mqdes"}, {Type: "char*", Name: "msg_ptr"}, {Type: "size_t", Name: "msg_len"}, {Type: "unsigned int*", Name: "msg_prio"}, {Type: "const struct timespec*", Name: "abs_timeout"}},
+	MqNotifyEventID:            {{Type: "mqd_t", Name: "mqdes"}, {Type: "const struct sigevent*", Name: "sevp"}},
+	MqGetsetattrEventID:        {{Type: "mqd_t", Name: "mqdes"}, {Type: "const struct mq_attr*", Name: "newattr"}, {Type: "struct mq_attr*", Name: "oldattr"}},
+	KexecLoadEventID:           {{Type: "unsigned long", Name: "entry"}, {Type: "unsigned long", Name: "nr_segments"}, {Type: "struct kexec_segment*", Name: "segments"}, {Type: "unsigned long", Name: "flags"}},
+	WaitidEventID:              {{Type: "int", Name: "idtype"}, {Type: "pid_t", Name: "id"}, {Type: "struct siginfo*", Name: "infop"}, {Type: "int", Name: "options"}, {Type: "struct rusage*", Name: "rusage"}},
+	AddKeyEventID:              {{Type: "const char*", Name: "type"}, {Type: "const char*", Name: "description"}, {Type: "const void*", Name: "payload"}, {Type: "size_t", Name: "plen"}, {Type: "key_serial_t", Name: "keyring"}},
+	RequestKeyEventID:          {{Type: "const char*", Name: "type"}, {Type: "const char*", Name: "description"}, {Type: "const char*", Name: "callout_info"}, {Type: "key_serial_t", Name: "dest_keyring"}},
+	KeyctlEventID:              {{Type: "int", Name: "operation"}, {Type: "unsigned long", Name: "arg2"}, {Type: "unsigned long", Name: "arg3"}, {Type: "unsigned long", Name: "arg4"}, {Type: "unsigned long", Name: "arg5"}},
+	IoprioSetEventID:           {{Type: "int", Name: "which"}, {Type: "int", Name: "who"}, {Type: "int", Name: "ioprio"}},
+	IoprioGetEventID:           {{Type: "int", Name: "which"}, {Type: "int", Name: "who"}},
 	InotifyInitEventID:         {},
-	InotifyAddWatchEventID:     {{pType: "int", pName: "fd"}, {pType: "const char*", pName: "pathname"}, {pType: "u32", pName: "mask"}},
-	InotifyRmWatchEventID:      {{pType: "int", pName: "fd"}, {pType: "int", pName: "wd"}},
-	MigratePagesEventID:        {{pType: "int", pName: "pid"}, {pType: "unsigned long", pName: "maxnode"}, {pType: "const unsigned long*", pName: "old_nodes"}, {pType: "const unsigned long*", pName: "new_nodes"}},
-	OpenatEventID:              {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "int", pName: "flags"}, {pType: "mode_t", pName: "mode"}},
-	MkdiratEventID:             {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}},
-	MknodatEventID:             {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}, {pType: "dev_t", pName: "dev"}},
-	FchownatEventID:            {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "uid_t", pName: "owner"}, {pType: "gid_t", pName: "group"}, {pType: "int", pName: "flags"}},
-	FutimesatEventID:           {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "struct timeval*", pName: "times"}},
-	NewfstatatEventID:          {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "struct stat*", pName: "statbuf"}, {pType: "int", pName: "flags"}},
-	UnlinkatEventID:            {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "int", pName: "flags"}},
-	RenameatEventID:            {{pType: "int", pName: "olddirfd"}, {pType: "const char*", pName: "oldpath"}, {pType: "int", pName: "newdirfd"}, {pType: "const char*", pName: "newpath"}},
-	LinkatEventID:              {{pType: "int", pName: "olddirfd"}, {pType: "const char*", pName: "oldpath"}, {pType: "int", pName: "newdirfd"}, {pType: "const char*", pName: "newpath"}, {pType: "unsigned int", pName: "flags"}},
-	SymlinkatEventID:           {{pType: "const char*", pName: "target"}, {pType: "int", pName: "newdirfd"}, {pType: "const char*", pName: "linkpath"}},
-	ReadlinkatEventID:          {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "char*", pName: "buf"}, {pType: "int", pName: "bufsiz"}},
-	FchmodatEventID:            {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "mode_t", pName: "mode"}, {pType: "int", pName: "flags"}},
-	FaccessatEventID:           {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "int", pName: "mode"}, {pType: "int", pName: "flags"}},
-	Pselect6EventID:            {{pType: "int", pName: "nfds"}, {pType: "fd_set*", pName: "readfds"}, {pType: "fd_set*", pName: "writefds"}, {pType: "fd_set*", pName: "exceptfds"}, {pType: "struct timespec*", pName: "timeout"}, {pType: "void*", pName: "sigmask"}},
-	PpollEventID:               {{pType: "struct pollfd*", pName: "fds"}, {pType: "unsigned int", pName: "nfds"}, {pType: "struct timespec*", pName: "tmo_p"}, {pType: "const sigset_t*", pName: "sigmask"}, {pType: "size_t", pName: "sigsetsize"}},
-	UnshareEventID:             {{pType: "int", pName: "flags"}},
-	SetRobustListEventID:       {{pType: "struct robust_list_head*", pName: "head"}, {pType: "size_t", pName: "len"}},
-	GetRobustListEventID:       {{pType: "int", pName: "pid"}, {pType: "struct robust_list_head**", pName: "head_ptr"}, {pType: "size_t*", pName: "len_ptr"}},
-	SpliceEventID:              {{pType: "int", pName: "fd_in"}, {pType: "off_t*", pName: "off_in"}, {pType: "int", pName: "fd_out"}, {pType: "off_t*", pName: "off_out"}, {pType: "size_t", pName: "len"}, {pType: "unsigned int", pName: "flags"}},
-	TeeEventID:                 {{pType: "int", pName: "fd_in"}, {pType: "int", pName: "fd_out"}, {pType: "size_t", pName: "len"}, {pType: "unsigned int", pName: "flags"}},
-	SyncFileRangeEventID:       {{pType: "int", pName: "fd"}, {pType: "off_t", pName: "offset"}, {pType: "off_t", pName: "nbytes"}, {pType: "unsigned int", pName: "flags"}},
-	VmspliceEventID:            {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "unsigned long", pName: "nr_segs"}, {pType: "unsigned int", pName: "flags"}},
-	MovePagesEventID:           {{pType: "int", pName: "pid"}, {pType: "unsigned long", pName: "count"}, {pType: "const void**", pName: "pages"}, {pType: "const int*", pName: "nodes"}, {pType: "int*", pName: "status"}, {pType: "int", pName: "flags"}},
-	UtimensatEventID:           {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "struct timespec*", pName: "times"}, {pType: "int", pName: "flags"}},
-	EpollPwaitEventID:          {{pType: "int", pName: "epfd"}, {pType: "struct epoll_event*", pName: "events"}, {pType: "int", pName: "maxevents"}, {pType: "int", pName: "timeout"}, {pType: "const sigset_t*", pName: "sigmask"}, {pType: "size_t", pName: "sigsetsize"}},
-	SignalfdEventID:            {{pType: "int", pName: "fd"}, {pType: "sigset_t*", pName: "mask"}, {pType: "int", pName: "flags"}},
-	TimerfdCreateEventID:       {{pType: "int", pName: "clockid"}, {pType: "int", pName: "flags"}},
-	EventfdEventID:             {{pType: "unsigned int", pName: "initval"}, {pType: "int", pName: "flags"}},
-	FallocateEventID:           {{pType: "int", pName: "fd"}, {pType: "int", pName: "mode"}, {pType: "off_t", pName: "offset"}, {pType: "off_t", pName: "len"}},
-	TimerfdSettimeEventID:      {{pType: "int", pName: "fd"}, {pType: "int", pName: "flags"}, {pType: "const struct itimerspec*", pName: "new_value"}, {pType: "struct itimerspec*", pName: "old_value"}},
-	TimerfdGettimeEventID:      {{pType: "int", pName: "fd"}, {pType: "struct itimerspec*", pName: "curr_value"}},
-	Accept4EventID:             {{pType: "int", pName: "sockfd"}, {pType: "struct sockaddr*", pName: "addr"}, {pType: "int*", pName: "addrlen"}, {pType: "int", pName: "flags"}},
-	Signalfd4EventID:           {{pType: "int", pName: "fd"}, {pType: "const sigset_t*", pName: "mask"}, {pType: "size_t", pName: "sizemask"}, {pType: "int", pName: "flags"}},
-	Eventfd2EventID:            {{pType: "unsigned int", pName: "initval"}, {pType: "int", pName: "flags"}},
-	EpollCreate1EventID:        {{pType: "int", pName: "flags"}},
-	Dup3EventID:                {{pType: "int", pName: "oldfd"}, {pType: "int", pName: "newfd"}, {pType: "int", pName: "flags"}},
-	Pipe2EventID:               {{pType: "int*", pName: "pipefd"}, {pType: "int", pName: "flags"}},
-	InotifyInit1EventID:        {{pType: "int", pName: "flags"}},
-	PreadvEventID:              {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "unsigned long", pName: "iovcnt"}, {pType: "unsigned long", pName: "pos_l"}, {pType: "unsigned long", pName: "pos_h"}},
-	PwritevEventID:             {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "unsigned long", pName: "iovcnt"}, {pType: "unsigned long", pName: "pos_l"}, {pType: "unsigned long", pName: "pos_h"}},
-	RtTgsigqueueinfoEventID:    {{pType: "pid_t", pName: "tgid"}, {pType: "pid_t", pName: "tid"}, {pType: "int", pName: "sig"}, {pType: "siginfo_t*", pName: "info"}},
-	PerfEventOpenEventID:       {{pType: "struct perf_event_attr*", pName: "attr"}, {pType: "pid_t", pName: "pid"}, {pType: "int", pName: "cpu"}, {pType: "int", pName: "group_fd"}, {pType: "unsigned long", pName: "flags"}},
-	RecvmmsgEventID:            {{pType: "int", pName: "sockfd"}, {pType: "struct mmsghdr*", pName: "msgvec"}, {pType: "unsigned int", pName: "vlen"}, {pType: "int", pName: "flags"}, {pType: "struct timespec*", pName: "timeout"}},
-	FanotifyInitEventID:        {{pType: "unsigned int", pName: "flags"}, {pType: "unsigned int", pName: "event_f_flags"}},
-	FanotifyMarkEventID:        {{pType: "int", pName: "fanotify_fd"}, {pType: "unsigned int", pName: "flags"}, {pType: "u64", pName: "mask"}, {pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}},
-	Prlimit64EventID:           {{pType: "pid_t", pName: "pid"}, {pType: "int", pName: "resource"}, {pType: "const struct rlimit64*", pName: "new_limit"}, {pType: "struct rlimit64*", pName: "old_limit"}},
-	NameToHandleAtEventID:      {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "struct file_handle*", pName: "handle"}, {pType: "int*", pName: "mount_id"}, {pType: "int", pName: "flags"}},
-	OpenByHandleAtEventID:      {{pType: "int", pName: "mount_fd"}, {pType: "struct file_handle*", pName: "handle"}, {pType: "int", pName: "flags"}},
-	ClockAdjtimeEventID:        {{pType: "const clockid_t", pName: "clk_id"}, {pType: "struct timex*", pName: "buf"}},
-	SyncfsEventID:              {{pType: "int", pName: "fd"}},
-	SendmmsgEventID:            {{pType: "int", pName: "sockfd"}, {pType: "struct mmsghdr*", pName: "msgvec"}, {pType: "unsigned int", pName: "vlen"}, {pType: "int", pName: "flags"}},
-	SetnsEventID:               {{pType: "int", pName: "fd"}, {pType: "int", pName: "nstype"}},
-	GetcpuEventID:              {{pType: "unsigned int*", pName: "cpu"}, {pType: "unsigned int*", pName: "node"}, {pType: "struct getcpu_cache*", pName: "tcache"}},
-	ProcessVmReadvEventID:      {{pType: "pid_t", pName: "pid"}, {pType: "const struct iovec*", pName: "local_iov"}, {pType: "unsigned long", pName: "liovcnt"}, {pType: "const struct iovec*", pName: "remote_iov"}, {pType: "unsigned long", pName: "riovcnt"}, {pType: "unsigned long", pName: "flags"}},
-	ProcessVmWritevEventID:     {{pType: "pid_t", pName: "pid"}, {pType: "const struct iovec*", pName: "local_iov"}, {pType: "unsigned long", pName: "liovcnt"}, {pType: "const struct iovec*", pName: "remote_iov"}, {pType: "unsigned long", pName: "riovcnt"}, {pType: "unsigned long", pName: "flags"}},
-	KcmpEventID:                {{pType: "pid_t", pName: "pid1"}, {pType: "pid_t", pName: "pid2"}, {pType: "int", pName: "type"}, {pType: "unsigned long", pName: "idx1"}, {pType: "unsigned long", pName: "idx2"}},
-	FinitModuleEventID:         {{pType: "int", pName: "fd"}, {pType: "const char*", pName: "param_values"}, {pType: "int", pName: "flags"}},
-	SchedSetattrEventID:        {{pType: "pid_t", pName: "pid"}, {pType: "struct sched_attr*", pName: "attr"}, {pType: "unsigned int", pName: "flags"}},
-	SchedGetattrEventID:        {{pType: "pid_t", pName: "pid"}, {pType: "struct sched_attr*", pName: "attr"}, {pType: "unsigned int", pName: "size"}, {pType: "unsigned int", pName: "flags"}},
-	Renameat2EventID:           {{pType: "int", pName: "olddirfd"}, {pType: "const char*", pName: "oldpath"}, {pType: "int", pName: "newdirfd"}, {pType: "const char*", pName: "newpath"}, {pType: "unsigned int", pName: "flags"}},
-	SeccompEventID:             {{pType: "unsigned int", pName: "operation"}, {pType: "unsigned int", pName: "flags"}, {pType: "const void*", pName: "args"}},
-	GetrandomEventID:           {{pType: "void*", pName: "buf"}, {pType: "size_t", pName: "buflen"}, {pType: "unsigned int", pName: "flags"}},
-	MemfdCreateEventID:         {{pType: "const char*", pName: "name"}, {pType: "unsigned int", pName: "flags"}},
-	KexecFileLoadEventID:       {{pType: "int", pName: "kernel_fd"}, {pType: "int", pName: "initrd_fd"}, {pType: "unsigned long", pName: "cmdline_len"}, {pType: "const char*", pName: "cmdline"}, {pType: "unsigned long", pName: "flags"}},
-	BpfEventID:                 {{pType: "int", pName: "cmd"}, {pType: "union bpf_attr*", pName: "attr"}, {pType: "unsigned int", pName: "size"}},
-	ExecveatEventID:            {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "const char*const*", pName: "argv"}, {pType: "const char*const*", pName: "envp"}, {pType: "int", pName: "flags"}},
-	UserfaultfdEventID:         {{pType: "int", pName: "flags"}},
-	MembarrierEventID:          {{pType: "int", pName: "cmd"}, {pType: "int", pName: "flags"}},
-	Mlock2EventID:              {{pType: "const void*", pName: "addr"}, {pType: "size_t", pName: "len"}, {pType: "int", pName: "flags"}},
-	CopyFileRangeEventID:       {{pType: "int", pName: "fd_in"}, {pType: "off_t*", pName: "off_in"}, {pType: "int", pName: "fd_out"}, {pType: "off_t*", pName: "off_out"}, {pType: "size_t", pName: "len"}, {pType: "unsigned int", pName: "flags"}},
-	Preadv2EventID:             {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "unsigned long", pName: "iovcnt"}, {pType: "unsigned long", pName: "pos_l"}, {pType: "unsigned long", pName: "pos_h"}, {pType: "int", pName: "flags"}},
-	Pwritev2EventID:            {{pType: "int", pName: "fd"}, {pType: "const struct iovec*", pName: "iov"}, {pType: "unsigned long", pName: "iovcnt"}, {pType: "unsigned long", pName: "pos_l"}, {pType: "unsigned long", pName: "pos_h"}, {pType: "int", pName: "flags"}},
-	PkeyMprotectEventID:        {{pType: "void*", pName: "addr"}, {pType: "size_t", pName: "len"}, {pType: "int", pName: "prot"}, {pType: "int", pName: "pkey"}},
-	PkeyAllocEventID:           {{pType: "unsigned int", pName: "flags"}, {pType: "unsigned long", pName: "access_rights"}},
-	PkeyFreeEventID:            {{pType: "int", pName: "pkey"}},
-	StatxEventID:               {{pType: "int", pName: "dirfd"}, {pType: "const char*", pName: "pathname"}, {pType: "int", pName: "flags"}, {pType: "unsigned int", pName: "mask"}, {pType: "struct statx*", pName: "statxbuf"}},
-	IoPgeteventsEventID:        {{pType: "aio_context_t", pName: "ctx_id"}, {pType: "long", pName: "min_nr"}, {pType: "long", pName: "nr"}, {pType: "struct io_event*", pName: "events"}, {pType: "struct timespec*", pName: "timeout"}, {pType: "const struct __aio_sigset*", pName: "usig"}},
-	RseqEventID:                {{pType: "struct rseq*", pName: "rseq"}, {pType: "u32", pName: "rseq_len"}, {pType: "int", pName: "flags"}, {pType: "u32", pName: "sig"}},
-	SysEnterEventID:            {{pType: "int", pName: "syscall"}},
-	SysExitEventID:             {{pType: "int", pName: "syscall"}},
+	InotifyAddWatchEventID:     {{Type: "int", Name: "fd"}, {Type: "const char*", Name: "pathname"}, {Type: "u32", Name: "mask"}},
+	InotifyRmWatchEventID:      {{Type: "int", Name: "fd"}, {Type: "int", Name: "wd"}},
+	MigratePagesEventID:        {{Type: "int", Name: "pid"}, {Type: "unsigned long", Name: "maxnode"}, {Type: "const unsigned long*", Name: "old_nodes"}, {Type: "const unsigned long*", Name: "new_nodes"}},
+	OpenatEventID:              {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "int", Name: "flags"}, {Type: "mode_t", Name: "mode"}},
+	MkdiratEventID:             {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}},
+	MknodatEventID:             {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}, {Type: "dev_t", Name: "dev"}},
+	FchownatEventID:            {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "uid_t", Name: "owner"}, {Type: "gid_t", Name: "group"}, {Type: "int", Name: "flags"}},
+	FutimesatEventID:           {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "struct timeval*", Name: "times"}},
+	NewfstatatEventID:          {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "struct stat*", Name: "statbuf"}, {Type: "int", Name: "flags"}},
+	UnlinkatEventID:            {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "int", Name: "flags"}},
+	RenameatEventID:            {{Type: "int", Name: "olddirfd"}, {Type: "const char*", Name: "oldpath"}, {Type: "int", Name: "newdirfd"}, {Type: "const char*", Name: "newpath"}},
+	LinkatEventID:              {{Type: "int", Name: "olddirfd"}, {Type: "const char*", Name: "oldpath"}, {Type: "int", Name: "newdirfd"}, {Type: "const char*", Name: "newpath"}, {Type: "unsigned int", Name: "flags"}},
+	SymlinkatEventID:           {{Type: "const char*", Name: "target"}, {Type: "int", Name: "newdirfd"}, {Type: "const char*", Name: "linkpath"}},
+	ReadlinkatEventID:          {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "char*", Name: "buf"}, {Type: "int", Name: "bufsiz"}},
+	FchmodatEventID:            {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "mode_t", Name: "mode"}, {Type: "int", Name: "flags"}},
+	FaccessatEventID:           {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "int", Name: "mode"}, {Type: "int", Name: "flags"}},
+	Pselect6EventID:            {{Type: "int", Name: "nfds"}, {Type: "fd_set*", Name: "readfds"}, {Type: "fd_set*", Name: "writefds"}, {Type: "fd_set*", Name: "exceptfds"}, {Type: "struct timespec*", Name: "timeout"}, {Type: "void*", Name: "sigmask"}},
+	PpollEventID:               {{Type: "struct pollfd*", Name: "fds"}, {Type: "unsigned int", Name: "nfds"}, {Type: "struct timespec*", Name: "tmo_p"}, {Type: "const sigset_t*", Name: "sigmask"}, {Type: "size_t", Name: "sigsetsize"}},
+	UnshareEventID:             {{Type: "int", Name: "flags"}},
+	SetRobustListEventID:       {{Type: "struct robust_list_head*", Name: "head"}, {Type: "size_t", Name: "len"}},
+	GetRobustListEventID:       {{Type: "int", Name: "pid"}, {Type: "struct robust_list_head**", Name: "head_ptr"}, {Type: "size_t*", Name: "len_ptr"}},
+	SpliceEventID:              {{Type: "int", Name: "fd_in"}, {Type: "off_t*", Name: "off_in"}, {Type: "int", Name: "fd_out"}, {Type: "off_t*", Name: "off_out"}, {Type: "size_t", Name: "len"}, {Type: "unsigned int", Name: "flags"}},
+	TeeEventID:                 {{Type: "int", Name: "fd_in"}, {Type: "int", Name: "fd_out"}, {Type: "size_t", Name: "len"}, {Type: "unsigned int", Name: "flags"}},
+	SyncFileRangeEventID:       {{Type: "int", Name: "fd"}, {Type: "off_t", Name: "offset"}, {Type: "off_t", Name: "nbytes"}, {Type: "unsigned int", Name: "flags"}},
+	VmspliceEventID:            {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "unsigned long", Name: "nr_segs"}, {Type: "unsigned int", Name: "flags"}},
+	MovePagesEventID:           {{Type: "int", Name: "pid"}, {Type: "unsigned long", Name: "count"}, {Type: "const void**", Name: "pages"}, {Type: "const int*", Name: "nodes"}, {Type: "int*", Name: "status"}, {Type: "int", Name: "flags"}},
+	UtimensatEventID:           {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "struct timespec*", Name: "times"}, {Type: "int", Name: "flags"}},
+	EpollPwaitEventID:          {{Type: "int", Name: "epfd"}, {Type: "struct epoll_event*", Name: "events"}, {Type: "int", Name: "maxevents"}, {Type: "int", Name: "timeout"}, {Type: "const sigset_t*", Name: "sigmask"}, {Type: "size_t", Name: "sigsetsize"}},
+	SignalfdEventID:            {{Type: "int", Name: "fd"}, {Type: "sigset_t*", Name: "mask"}, {Type: "int", Name: "flags"}},
+	TimerfdCreateEventID:       {{Type: "int", Name: "clockid"}, {Type: "int", Name: "flags"}},
+	EventfdEventID:             {{Type: "unsigned int", Name: "initval"}, {Type: "int", Name: "flags"}},
+	FallocateEventID:           {{Type: "int", Name: "fd"}, {Type: "int", Name: "mode"}, {Type: "off_t", Name: "offset"}, {Type: "off_t", Name: "len"}},
+	TimerfdSettimeEventID:      {{Type: "int", Name: "fd"}, {Type: "int", Name: "flags"}, {Type: "const struct itimerspec*", Name: "new_value"}, {Type: "struct itimerspec*", Name: "old_value"}},
+	TimerfdGettimeEventID:      {{Type: "int", Name: "fd"}, {Type: "struct itimerspec*", Name: "curr_value"}},
+	Accept4EventID:             {{Type: "int", Name: "sockfd"}, {Type: "struct sockaddr*", Name: "addr"}, {Type: "int*", Name: "addrlen"}, {Type: "int", Name: "flags"}},
+	Signalfd4EventID:           {{Type: "int", Name: "fd"}, {Type: "const sigset_t*", Name: "mask"}, {Type: "size_t", Name: "sizemask"}, {Type: "int", Name: "flags"}},
+	Eventfd2EventID:            {{Type: "unsigned int", Name: "initval"}, {Type: "int", Name: "flags"}},
+	EpollCreate1EventID:        {{Type: "int", Name: "flags"}},
+	Dup3EventID:                {{Type: "int", Name: "oldfd"}, {Type: "int", Name: "newfd"}, {Type: "int", Name: "flags"}},
+	Pipe2EventID:               {{Type: "int*", Name: "pipefd"}, {Type: "int", Name: "flags"}},
+	InotifyInit1EventID:        {{Type: "int", Name: "flags"}},
+	PreadvEventID:              {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "unsigned long", Name: "iovcnt"}, {Type: "unsigned long", Name: "pos_l"}, {Type: "unsigned long", Name: "pos_h"}},
+	PwritevEventID:             {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "unsigned long", Name: "iovcnt"}, {Type: "unsigned long", Name: "pos_l"}, {Type: "unsigned long", Name: "pos_h"}},
+	RtTgsigqueueinfoEventID:    {{Type: "pid_t", Name: "tgid"}, {Type: "pid_t", Name: "tid"}, {Type: "int", Name: "sig"}, {Type: "siginfo_t*", Name: "info"}},
+	PerfEventOpenEventID:       {{Type: "struct perf_event_attr*", Name: "attr"}, {Type: "pid_t", Name: "pid"}, {Type: "int", Name: "cpu"}, {Type: "int", Name: "group_fd"}, {Type: "unsigned long", Name: "flags"}},
+	RecvmmsgEventID:            {{Type: "int", Name: "sockfd"}, {Type: "struct mmsghdr*", Name: "msgvec"}, {Type: "unsigned int", Name: "vlen"}, {Type: "int", Name: "flags"}, {Type: "struct timespec*", Name: "timeout"}},
+	FanotifyInitEventID:        {{Type: "unsigned int", Name: "flags"}, {Type: "unsigned int", Name: "event_f_flags"}},
+	FanotifyMarkEventID:        {{Type: "int", Name: "fanotify_fd"}, {Type: "unsigned int", Name: "flags"}, {Type: "u64", Name: "mask"}, {Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}},
+	Prlimit64EventID:           {{Type: "pid_t", Name: "pid"}, {Type: "int", Name: "resource"}, {Type: "const struct rlimit64*", Name: "new_limit"}, {Type: "struct rlimit64*", Name: "old_limit"}},
+	NameToHandleAtEventID:      {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "struct file_handle*", Name: "handle"}, {Type: "int*", Name: "mount_id"}, {Type: "int", Name: "flags"}},
+	OpenByHandleAtEventID:      {{Type: "int", Name: "mount_fd"}, {Type: "struct file_handle*", Name: "handle"}, {Type: "int", Name: "flags"}},
+	ClockAdjtimeEventID:        {{Type: "const clockid_t", Name: "clk_id"}, {Type: "struct timex*", Name: "buf"}},
+	SyncfsEventID:              {{Type: "int", Name: "fd"}},
+	SendmmsgEventID:            {{Type: "int", Name: "sockfd"}, {Type: "struct mmsghdr*", Name: "msgvec"}, {Type: "unsigned int", Name: "vlen"}, {Type: "int", Name: "flags"}},
+	SetnsEventID:               {{Type: "int", Name: "fd"}, {Type: "int", Name: "nstype"}},
+	GetcpuEventID:              {{Type: "unsigned int*", Name: "cpu"}, {Type: "unsigned int*", Name: "node"}, {Type: "struct getcpu_cache*", Name: "tcache"}},
+	ProcessVmReadvEventID:      {{Type: "pid_t", Name: "pid"}, {Type: "const struct iovec*", Name: "local_iov"}, {Type: "unsigned long", Name: "liovcnt"}, {Type: "const struct iovec*", Name: "remote_iov"}, {Type: "unsigned long", Name: "riovcnt"}, {Type: "unsigned long", Name: "flags"}},
+	ProcessVmWritevEventID:     {{Type: "pid_t", Name: "pid"}, {Type: "const struct iovec*", Name: "local_iov"}, {Type: "unsigned long", Name: "liovcnt"}, {Type: "const struct iovec*", Name: "remote_iov"}, {Type: "unsigned long", Name: "riovcnt"}, {Type: "unsigned long", Name: "flags"}},
+	KcmpEventID:                {{Type: "pid_t", Name: "pid1"}, {Type: "pid_t", Name: "pid2"}, {Type: "int", Name: "type"}, {Type: "unsigned long", Name: "idx1"}, {Type: "unsigned long", Name: "idx2"}},
+	FinitModuleEventID:         {{Type: "int", Name: "fd"}, {Type: "const char*", Name: "param_values"}, {Type: "int", Name: "flags"}},
+	SchedSetattrEventID:        {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_attr*", Name: "attr"}, {Type: "unsigned int", Name: "flags"}},
+	SchedGetattrEventID:        {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_attr*", Name: "attr"}, {Type: "unsigned int", Name: "size"}, {Type: "unsigned int", Name: "flags"}},
+	Renameat2EventID:           {{Type: "int", Name: "olddirfd"}, {Type: "const char*", Name: "oldpath"}, {Type: "int", Name: "newdirfd"}, {Type: "const char*", Name: "newpath"}, {Type: "unsigned int", Name: "flags"}},
+	SeccompEventID:             {{Type: "unsigned int", Name: "operation"}, {Type: "unsigned int", Name: "flags"}, {Type: "const void*", Name: "args"}},
+	GetrandomEventID:           {{Type: "void*", Name: "buf"}, {Type: "size_t", Name: "buflen"}, {Type: "unsigned int", Name: "flags"}},
+	MemfdCreateEventID:         {{Type: "const char*", Name: "name"}, {Type: "unsigned int", Name: "flags"}},
+	KexecFileLoadEventID:       {{Type: "int", Name: "kernel_fd"}, {Type: "int", Name: "initrd_fd"}, {Type: "unsigned long", Name: "cmdline_len"}, {Type: "const char*", Name: "cmdline"}, {Type: "unsigned long", Name: "flags"}},
+	BpfEventID:                 {{Type: "int", Name: "cmd"}, {Type: "union bpf_attr*", Name: "attr"}, {Type: "unsigned int", Name: "size"}},
+	ExecveatEventID:            {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "const char*const*", Name: "argv"}, {Type: "const char*const*", Name: "envp"}, {Type: "int", Name: "flags"}},
+	UserfaultfdEventID:         {{Type: "int", Name: "flags"}},
+	MembarrierEventID:          {{Type: "int", Name: "cmd"}, {Type: "int", Name: "flags"}},
+	Mlock2EventID:              {{Type: "const void*", Name: "addr"}, {Type: "size_t", Name: "len"}, {Type: "int", Name: "flags"}},
+	CopyFileRangeEventID:       {{Type: "int", Name: "fd_in"}, {Type: "off_t*", Name: "off_in"}, {Type: "int", Name: "fd_out"}, {Type: "off_t*", Name: "off_out"}, {Type: "size_t", Name: "len"}, {Type: "unsigned int", Name: "flags"}},
+	Preadv2EventID:             {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "unsigned long", Name: "iovcnt"}, {Type: "unsigned long", Name: "pos_l"}, {Type: "unsigned long", Name: "pos_h"}, {Type: "int", Name: "flags"}},
+	Pwritev2EventID:            {{Type: "int", Name: "fd"}, {Type: "const struct iovec*", Name: "iov"}, {Type: "unsigned long", Name: "iovcnt"}, {Type: "unsigned long", Name: "pos_l"}, {Type: "unsigned long", Name: "pos_h"}, {Type: "int", Name: "flags"}},
+	PkeyMprotectEventID:        {{Type: "void*", Name: "addr"}, {Type: "size_t", Name: "len"}, {Type: "int", Name: "prot"}, {Type: "int", Name: "pkey"}},
+	PkeyAllocEventID:           {{Type: "unsigned int", Name: "flags"}, {Type: "unsigned long", Name: "access_rights"}},
+	PkeyFreeEventID:            {{Type: "int", Name: "pkey"}},
+	StatxEventID:               {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "int", Name: "flags"}, {Type: "unsigned int", Name: "mask"}, {Type: "struct statx*", Name: "statxbuf"}},
+	IoPgeteventsEventID:        {{Type: "aio_context_t", Name: "ctx_id"}, {Type: "long", Name: "min_nr"}, {Type: "long", Name: "nr"}, {Type: "struct io_event*", Name: "events"}, {Type: "struct timespec*", Name: "timeout"}, {Type: "const struct __aio_sigset*", Name: "usig"}},
+	RseqEventID:                {{Type: "struct rseq*", Name: "rseq"}, {Type: "u32", Name: "rseq_len"}, {Type: "int", Name: "flags"}, {Type: "u32", Name: "sig"}},
+	SysEnterEventID:            {{Type: "int", Name: "syscall"}},
+	SysExitEventID:             {{Type: "int", Name: "syscall"}},
 	DoExitEventID:              {},
-	CapCapableEventID:          {{pType: "int", pName: "cap"}, {pType: "int", pName: "syscall"}},
-	SecurityBprmCheckEventID:   {{pType: "const char*", pName: "pathname"}, {pType: "dev_t", pName: "dev"}, {pType: "unsigned long", pName: "inode"}},
-	SecurityFileOpenEventID:    {{pType: "const char*", pName: "pathname"}, {pType: "int", pName: "flags"}, {pType: "dev_t", pName: "dev"}, {pType: "unsigned long", pName: "inode"}},
-	SecurityInodeUnlinkEventID: {{pType: "const char*", pName: "pathname"}},
-	VfsWriteEventID:            {{pType: "const char*", pName: "pathname"}, {pType: "dev_t", pName: "dev"}, {pType: "unsigned long", pName: "inode"}, {pType: "size_t", pName: "count"}, {pType: "off_t", pName: "pos"}},
-	VfsWritevEventID:           {{pType: "const char*", pName: "pathname"}, {pType: "dev_t", pName: "dev"}, {pType: "unsigned long", pName: "inode"}, {pType: "unsigned long", pName: "vlen"}, {pType: "off_t", pName: "pos"}},
-	MemProtAlertEventID:        {{pType: "alert_t", pName: "alert"}},
+	CapCapableEventID:          {{Type: "int", Name: "cap"}, {Type: "int", Name: "syscall"}},
+	SecurityBprmCheckEventID:   {{Type: "const char*", Name: "pathname"}, {Type: "dev_t", Name: "dev"}, {Type: "unsigned long", Name: "inode"}},
+	SecurityFileOpenEventID:    {{Type: "const char*", Name: "pathname"}, {Type: "int", Name: "flags"}, {Type: "dev_t", Name: "dev"}, {Type: "unsigned long", Name: "inode"}},
+	SecurityInodeUnlinkEventID: {{Type: "const char*", Name: "pathname"}},
+	VfsWriteEventID:            {{Type: "const char*", Name: "pathname"}, {Type: "dev_t", Name: "dev"}, {Type: "unsigned long", Name: "inode"}, {Type: "size_t", Name: "count"}, {Type: "off_t", Name: "pos"}},
+	VfsWritevEventID:           {{Type: "const char*", Name: "pathname"}, {Type: "dev_t", Name: "dev"}, {Type: "unsigned long", Name: "inode"}, {Type: "unsigned long", Name: "vlen"}, {Type: "off_t", Name: "pos"}},
+	MemProtAlertEventID:        {{Type: "alert_t", Name: "alert"}},
 	SchedProcessExitEventID:    {},
 }

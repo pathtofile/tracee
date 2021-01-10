@@ -10,7 +10,8 @@ CMD_GIT ?= git
 CMD_CHECKSUM ?= sha256sum
 CMD_GITHUB ?= gh
 # environment:
-ARCH ?= $(shell uname -m)
+ARCH_UNAME := $(shell uname -m)
+ARCH ?= $(ARCH_UNAME:aarch64=arm64)
 KERN_RELEASE ?= $(shell uname -r)
 KERN_BLD_PATH ?= $(if $(KERN_HEADERS),$(KERN_HEADERS),/lib/modules/$(KERN_RELEASE)/build)
 KERN_SRC_PATH ?= $(if $(KERN_HEADERS),$(KERN_HEADERS),$(if $(wildcard /lib/modules/$(KERN_RELEASE)/source),/lib/modules/$(KERN_RELEASE)/source,$(KERN_BLD_PATH)))
@@ -123,9 +124,8 @@ endif
 
 
 .PHONY: test 
-go_src_test := $(shell find . -type f -name '*_test.go')
 ifndef DOCKER
-test: $(GO_SRC) $(go_src_test) $(LIBBPF_HEADERS) $(LIBBPF_OBJ)
+test: $(GO_SRC) $(LIBBPF_HEADERS) $(LIBBPF_OBJ)
 	$(go_env)	go test -v ./...
 else
 test: $(DOCKER_BUILDER)

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+
+	"github.com/aquasecurity/tracee/tracee/external"
 )
 
 func (t *Tracee) runEventPipeline(done <-chan struct{}) error {
@@ -137,8 +139,8 @@ func (t *Tracee) getStackTrace(StackID uint32) ([]uint64, error) {
 	return StackTrace[0:stackCounter], nil
 }
 
-func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) (<-chan Event, <-chan error, error) {
-	out := make(chan Event, 1000)
+func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) (<-chan external.Event, <-chan error, error) {
+	out := make(chan external.Event, 1000)
 	errc := make(chan error, 1)
 	go func() {
 		defer close(out)
@@ -153,12 +155,12 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 				continue
 			}
 			args := make([]interface{}, rawEvent.Ctx.Argnum)
-			argsNames := make([]string, rawEvent.Ctx.Argnum)
+			argMetas := make([]external.ArgMeta, rawEvent.Ctx.Argnum)
 			for i, tag := range rawEvent.ArgsTags {
 				args[i] = rawEvent.RawArgs[tag]
-				argName, ok := t.DecParamName[rawEvent.Ctx.EventID%2][tag]
+				argMeta, ok := t.DecParamName[rawEvent.Ctx.EventID%2][tag]
 				if ok {
-					argsNames[i] = argName
+					argMetas[i] = argMeta
 				} else {
 					errc <- fmt.Errorf("Invalid arg tag for event %d", rawEvent.Ctx.EventID)
 					continue
@@ -171,7 +173,7 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 				stackTrace, _ = t.getStackTrace(rawEvent.Ctx.StackID)
 			}
 
-			evt, err := newEvent(rawEvent.Ctx, argsNames, args, stackTrace)
+			evt, err := newEvent(rawEvent.Ctx, argMetas, args, stackTrace)
 			if err != nil {
 				errc <- err
 				continue
@@ -186,7 +188,7 @@ func (t *Tracee) prepareEventForPrint(done <-chan struct{}, in <-chan RawEvent) 
 	return out, errc, nil
 }
 
-func (t *Tracee) printEvent(done <-chan struct{}, in <-chan Event) (<-chan error, error) {
+func (t *Tracee) printEvent(done <-chan struct{}, in <-chan external.Event) (<-chan error, error) {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
