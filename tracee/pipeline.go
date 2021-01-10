@@ -111,16 +111,10 @@ func (t *Tracee) getStackTrace(StackID uint32) ([]uint64, error) {
 	StackTrace := make([]uint64, maxStackDepth)
 	stackFrameSize := (strconv.IntSize / 8)
 
-	// Get Map that holds the stack traces
-	stackTracesMap, err := t.bpfModule.GetMap("stack_traces")
-	if err != nil {
-		return StackTrace[0:0], nil
-	}
-
 	// Lookup the StackTraceID in the map
-	// The Id could be missing for various reasons, including
-	// the id has aged out, or we are not collecting stack traces
-	stackBytes, err := stackTracesMap.GetValue(StackID, stackFrameSize*maxStackDepth)
+	// The ID could have aged out of the Map, as it only holds a finite number of
+	// Stack IDs in it's Map
+	stackBytes, err := t.stackTracesMap.GetValue(StackID, stackFrameSize*maxStackDepth)
 	if err != nil {
 		return StackTrace[0:0], nil
 	}
@@ -136,11 +130,9 @@ func (t *Tracee) getStackTrace(StackID uint32) ([]uint64, error) {
 		stackCounter++
 	}
 
-	// Remove the ID from the map to we don't fill it up
-	err = stackTracesMap.DeleteKey(StackID)
-	if err != nil {
-		fmt.Printf("[**] Failed to delte key!\n")
-	}
+	// Attempt to remove the ID from the map so we don't fill it up
+	// But if this fails continue on
+	_ = t.stackTracesMap.DeleteKey(StackID)
 
 	return StackTrace[0:stackCounter], nil
 }

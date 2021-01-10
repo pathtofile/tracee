@@ -47,7 +47,6 @@
 #define MAX_STR_FILTER_SIZE 16            // Max string filter size should be bounded due to instructions limit
 #define MAX_STACK_TRACES    1024          // Max amount of different stack traces to buffer in the Map
 #define MAX_STACK_DEPTH     20            // Max depth of each stack trace to track
-#define STACK_ID_LEN        sizeof(u32)   // Length of the Stack ID Key which is a uint32
 
 #define SUBMIT_BUF_IDX      0
 #define STRING_BUF_IDX      1
@@ -208,8 +207,8 @@ typedef struct context {
     char uts_name[TASK_COMM_LEN];
     u32 eventid;
     s64 retval;
+    u32 stack_id;
     u8 argnum;
-    char stack_id[STACK_ID_LEN];
 } context_t;
 
 typedef struct args {
@@ -482,7 +481,7 @@ static __always_inline int init_context(context_t *context)
     context->ts = bpf_ktime_get_ns()/1000;
 
     // Clean Stack Trace ID
-    __builtin_memset(&context->stack_id, 0, STACK_ID_LEN);
+    context->stack_id = 0;
 
     return 0;
 }
@@ -659,7 +658,7 @@ static __always_inline context_t init_and_save_context(void* ctx, buf_t *submit_
     if (get_config(CONFIG_CAPTURE_STACK_TRACES)) {
         int stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
         if (stack_id >= 0) {
-            bpf_probe_read(&context.stack_id, STACK_ID_LEN, &stack_id);
+            context.stack_id = stack_id;
         }
     }
 

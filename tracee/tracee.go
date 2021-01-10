@@ -129,6 +129,7 @@ type Tracee struct {
 	DecParamName  [2]map[argTag]string
 	EncParamName  [2]map[string]argTag
 	pidsInMntns   bucketsCache //record the first n PIDs (host) in each mount namespace, for internal usage
+	stackTracesMap *bpf.BPFMap
 }
 
 type counter int32
@@ -236,6 +237,14 @@ func New(cfg TraceeConfig) (*Tracee, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating readiness file: %v", err)
 	}
+
+	// Get refernce to stack traces map
+	stackTracesMap, err := t.bpfModule.GetMap("stack_traces")
+	if err != nil {
+		return nil, fmt.Errorf("error getting acces to 'stack_traces' eBPF Map %v", err)
+	}
+	t.stackTracesMap = stackTracesMap
+
 	return t, nil
 }
 
@@ -983,6 +992,8 @@ func (t *Tracee) prepareArgsForPrint(ctx *context, args map[argTag]interface{}) 
 
 // context struct contains common metadata that is collected for all types of events
 // it is used to unmarshal binary data and therefore should match (bit by bit) to the `context_t` struct in the ebpf code.
+// NOTE: Integers want to be aligned in memory, so if changing the format of this struct
+// keep the 1-byte 'Argnum' as the final parameter before the padding (if padding is needed).
 type context struct {
 	Ts       uint64
 	Pid      uint32
@@ -998,8 +1009,8 @@ type context struct {
 	UtsName  [16]byte
 	EventID  int32
 	Retval   int64
-	Argnum   uint8
 	StackID  uint32
+	Argnum   uint8
 	_        [3]byte //padding
 }
 
