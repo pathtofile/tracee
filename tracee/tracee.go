@@ -108,23 +108,23 @@ func (tc TraceeConfig) Validate() error {
 
 // Tracee traces system calls and system events using eBPF
 type Tracee struct {
-	config        TraceeConfig
-	eventsToTrace map[int32]bool
-	bpfModule     *bpf.Module
-	eventsPerfMap *bpf.PerfBuffer
-	fileWrPerfMap *bpf.PerfBuffer
-	eventsChannel chan []byte
-	fileWrChannel chan []byte
-	lostEvChannel chan uint64
-	lostWrChannel chan uint64
-	printer       eventPrinter
-	stats         statsStore
-	capturedFiles map[string]int64
-	writtenFiles  map[string]string
-	mntNsFirstPid map[uint32]uint32
-	DecParamName  [2]map[argTag]external.ArgMeta
-	EncParamName  [2]map[string]argTag
-	pidsInMntns   bucketsCache //record the first n PIDs (host) in each mount namespace, for internal usage
+	config         TraceeConfig
+	eventsToTrace  map[int32]bool
+	bpfModule      *bpf.Module
+	eventsPerfMap  *bpf.PerfBuffer
+	fileWrPerfMap  *bpf.PerfBuffer
+	eventsChannel  chan []byte
+	fileWrChannel  chan []byte
+	lostEvChannel  chan uint64
+	lostWrChannel  chan uint64
+	printer        eventPrinter
+	stats          statsStore
+	capturedFiles  map[string]int64
+	writtenFiles   map[string]string
+	mntNsFirstPid  map[uint32]uint32
+	DecParamName   [2]map[argTag]external.ArgMeta
+	EncParamName   [2]map[string]argTag
+	pidsInMntns    bucketsCache //record the first n PIDs (host) in each mount namespace, for internal usage
 	stackTracesMap *bpf.BPFMap
 }
 
