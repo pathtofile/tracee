@@ -42,14 +42,17 @@ type TraceeConfig struct {
 }
 
 type Filter struct {
-	EventsToTrace []int32
-	UIDFilter     *UintFilter
-	PIDFilter     *UintFilter
-	MntNSFilter   *UintFilter
-	PidNSFilter   *UintFilter
-	UTSFilter     *StringFilter
-	CommFilter    *StringFilter
-	ContFilter    *BoolFilter
+	EventsToTrace  []int32
+	UIDFilter      *UintFilter
+	PIDFilter      *UintFilter
+	MntNSFilter    *UintFilter
+	PidNSFilter    *UintFilter
+	UTSFilter      *StringFilter
+	CommFilter     *StringFilter
+	ContFilter     *BoolFilter
+	NewPidNsFilter *BoolFilter
+	ArgFilter      *ArgFilter
+	Follow         bool
 }
 
 type UintFilter struct {
@@ -72,6 +75,17 @@ type BoolFilter struct {
 	Enabled bool
 }
 
+type ArgFilter struct {
+	Filters map[int32]map[string]ArgFilterVal // key to the first map is event id, and to the second map the argument name
+	Enabled bool
+}
+
+type ArgFilterVal struct {
+	argTag   argTag
+	Equal    []string
+	NotEqual []string
+}
+
 // Validate does static validation of the configuration
 func (tc TraceeConfig) Validate() error {
 	if tc.Filter.EventsToTrace == nil {
@@ -83,6 +97,25 @@ func (tc TraceeConfig) Validate() error {
 	for _, e := range tc.Filter.EventsToTrace {
 		if _, ok := EventsIDToEvent[e]; !ok {
 			return fmt.Errorf("invalid event to trace: %d", e)
+		}
+	}
+	for eventID, eventFilters := range tc.Filter.ArgFilter.Filters {
+		for argName, _ := range eventFilters {
+			eventParams, ok := EventsIDToParams[eventID]
+			if !ok {
+				return fmt.Errorf("invalid argument filter event id: %d", eventID)
+			}
+			// check if argument name exists for this event
+			argFound := false
+			for i := range eventParams {
+				if eventParams[i].Name == argName {
+					argFound = true
+					break
+				}
+			}
+			if !argFound {
+				return fmt.Errorf("invalid argument filter argument name: %s", argName)
+			}
 		}
 	}
 	if (tc.PerfBufferSize & (tc.PerfBufferSize - 1)) != 0 {
@@ -179,7 +212,8 @@ func New(cfg TraceeConfig) (*Tracee, error) {
 	t := &Tracee{
 		config: cfg,
 	}
-	ContainerMode := (t.config.Filter.ContFilter.Enabled && t.config.Filter.ContFilter.Value) || t.config.Mode == ModePidNs
+	ContainerMode := (t.config.Filter.ContFilter.Enabled && t.config.Filter.ContFilter.Value) ||
+		(t.config.Filter.NewPidNsFilter.Enabled && t.config.Filter.NewPidNsFilter.Value)
 	printObj, err := newEventPrinter(t.config.OutputFormat, ContainerMode, t.config.EventsFile, t.config.ErrorsFile)
 	if err != nil {
 		return nil, err
@@ -498,26 +532,20 @@ func (t *Tracee) setStringFilter(filter *StringFilter, filterMapName string, con
 	return nil
 }
 
-func (t *Tracee) setBoolFilter(filter *BoolFilter, filterMapName string, configFilter bpfConfig) error {
+func (t *Tracee) setBoolFilter(filter *BoolFilter, configFilter bpfConfig) error {
 	if !filter.Enabled {
 		return nil
-	}
-
-	filterMap, err := t.bpfModule.GetMap(filterMapName)
-	if err != nil {
-		return err
-	}
-	err = filterMap.Update(uint8(0), boolToUInt32(filter.Value))
-	if err != nil {
-		return err
 	}
 
 	bpfConfigMap, err := t.bpfModule.GetMap("config_map")
 	if err != nil {
 		return err
 	}
-	// Set to a value != 0 to enable the filter
-	bpfConfigMap.Update(uint32(configFilter), filterIn)
+	if filter.Value {
+		bpfConfigMap.Update(uint32(configFilter), filterIn)
+	} else {
+		bpfConfigMap.Update(uint32(configFilter), filterOut)
+	}
 
 	return nil
 }
@@ -539,13 +567,17 @@ func (t *Tracee) populateBPFMaps() error {
 
 	// Initialize config and pids maps
 	bpfConfigMap, _ := t.bpfModule.GetMap("config_map")
-	bpfConfigMap.Update(uint32(configMode), t.config.Mode)
+	// TODO: BPF code doesn't care anymore about modes, but filters - remove modes from userspace as well
+	if t.config.Mode == ModeNew {
+		bpfConfigMap.Update(uint32(configNewPidFilter), filterIn)
+	}
 	bpfConfigMap.Update(uint32(configDetectOrigSyscall), boolToUInt32(t.config.DetectOriginalSyscall))
 	bpfConfigMap.Update(uint32(configExecEnv), boolToUInt32(t.config.ShowExecEnv))
 	bpfConfigMap.Update(uint32(configCaptureFiles), boolToUInt32(t.config.CaptureWrite))
 	bpfConfigMap.Update(uint32(configExtractDynCode), boolToUInt32(t.config.CaptureMem))
 	bpfConfigMap.Update(uint32(configTraceePid), uint32(os.Getpid()))
 	bpfConfigMap.Update(uint32(configStackAddresses), boolToUInt32(t.config.StackAddresses))
+	bpfConfigMap.Update(uint32(configFollowFilter), boolToUInt32(t.config.Filter.Follow))
 
 	// Initialize tail calls program array
 	bpfProgArrayMap, _ := t.bpfModule.GetMap("prog_array")
@@ -603,15 +635,32 @@ func (t *Tracee) populateBPFMaps() error {
 		return fmt.Errorf("error setting comm filter: %v", err)
 	}
 
-	err = t.setBoolFilter(t.config.Filter.ContFilter, "cont_filter", configContFilter)
+	err = t.setBoolFilter(t.config.Filter.ContFilter, configContFilter)
 	if err != nil {
 		return fmt.Errorf("error setting cont filter: %v", err)
+	}
+
+	err = t.setBoolFilter(t.config.Filter.NewPidNsFilter, configNewPidNsFilter)
+	if err != nil {
+		return fmt.Errorf("error setting newpidns filter: %v", err)
 	}
 
 	stringStoreMap, _ := t.bpfModule.GetMap("string_store")
 	stringStoreMap.Update(uint32(0), []byte("/dev/null"))
 
 	eventsParams := t.initEventsParams()
+
+	// After initializing event params, we can also initialize argument filters argTags
+	for eventID, eventFilters := range t.config.Filter.ArgFilter.Filters {
+		for argName, filter := range eventFilters {
+			argTag, ok := t.EncParamName[eventID%2][argName]
+			if !ok {
+				return fmt.Errorf("event argument %s for event %d was not initialized correctly", argName, eventID)
+			}
+			filter.argTag = argTag
+			eventFilters[argName] = filter
+		}
+	}
 
 	sysEnterTailsBPFMap, _ := t.bpfModule.GetMap("sys_enter_tails")
 	//sysExitTailsBPFMap := t.bpfModule.GetMap("sys_exit_tails")
@@ -841,6 +890,32 @@ func (t *Tracee) handleError(err error) {
 
 // shouldProcessEvent decides whether or not to drop an event before further processing it
 func (t *Tracee) shouldProcessEvent(e RawEvent) bool {
+	if t.config.Filter.ArgFilter.Enabled {
+		for _, filter := range t.config.Filter.ArgFilter.Filters[e.Ctx.EventID] {
+			argVal, ok := e.RawArgs[filter.argTag]
+			if !ok {
+				continue
+			}
+			// TODO: use type assertion instead of string convertion
+			argValStr := fmt.Sprint(argVal)
+			match := false
+			for i := range filter.Equal {
+				if argValStr == filter.Equal[i] {
+					match = true
+					break
+				}
+			}
+			if !match && len(filter.Equal) > 0 {
+				return false
+			}
+			for i := range filter.NotEqual {
+				if argValStr == filter.NotEqual[i] {
+					return false
+				}
+			}
+		}
+	}
+
 	return true
 }
 

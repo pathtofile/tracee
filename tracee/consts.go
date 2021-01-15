@@ -1,8 +1,9 @@
 package tracee
 
 import (
-	"github.com/aquasecurity/tracee/tracee/external"
 	"math"
+
+	"github.com/aquasecurity/tracee/tracee/external"
 )
 
 // bpfConfig is an enum that include various configurations that can be passed to bpf code
@@ -14,12 +15,12 @@ type bpfConfig uint32
 const maxStackDepth int = 20
 
 const (
-	configMode bpfConfig = iota
-	configDetectOrigSyscall
+	configDetectOrigSyscall bpfConfig = iota + 1
 	configExecEnv
 	configCaptureFiles
 	configExtractDynCode
 	configTraceePid
+	configStackAddresses
 	configUIDFilter
 	configMntNsFilter
 	configPidNsFilter
@@ -27,7 +28,9 @@ const (
 	configCommFilter
 	configPidFilter
 	configContFilter
-	configStackAddresses
+	configFollowFilter
+	configNewPidFilter
+	configNewPidNsFilter
 )
 
 const (
@@ -73,8 +76,6 @@ type binType uint8
 const (
 	ModeAll uint32 = iota + 1
 	ModeNew
-	ModePidNs
-	ModeFollow
 )
 
 const (
@@ -502,6 +503,24 @@ var EventsIDToEvent = map[int32]EventConfig{
 	VfsWritevEventID:           {ID: VfsWritevEventID, ID32Bit: sys32undefined, Name: "vfs_writev", Probes: []probe{{event: "vfs_writev", attach: kprobe, fn: "trace_vfs_writev"}, {event: "vfs_writev", attach: kretprobe, fn: "trace_ret_vfs_writev"}}, Sets: []string{"default"}},
 	MemProtAlertEventID:        {ID: MemProtAlertEventID, ID32Bit: sys32undefined, Name: "mem_prot_alert", Probes: []probe{{event: "security_mmap_addr", attach: kprobe, fn: "trace_mmap_alert"}, {event: "security_file_mprotect", attach: kprobe, fn: "trace_mprotect_alert"}}, Sets: []string{}},
 	SchedProcessExitEventID:    {ID: SchedProcessExitEventID, ID32Bit: sys32undefined, Name: "sched_process_exit", Probes: []probe{{event: "sched:sched_process_exit", attach: rawTracepoint, fn: "tracepoint__sched__sched_process_exit"}}, EssentialEvent: true, Sets: []string{"default", "proc", "proc_life"}},
+	PidfdSendSignalEventID:     {ID: PidfdSendSignalEventID, ID32Bit: sys32pidfd_send_signal, Name: "pidfd_send_signal", Probes: []probe{{event: "pidfd_send_signal", attach: sysCall, fn: "pidfd_send_signal"}}, Sets: []string{"syscalls", "signals"}},
+	IoUringSetupEventID:        {ID: IoUringSetupEventID, ID32Bit: sys32io_uring_setup, Name: "io_uring_setup", Probes: []probe{{event: "io_uring_setup", attach: sysCall, fn: "io_uring_setup"}}, Sets: []string{"syscalls"}},
+	IoUringEnterEventID:        {ID: IoUringEnterEventID, ID32Bit: sys32io_uring_enter, Name: "io_uring_enter", Probes: []probe{{event: "io_uring_enter", attach: sysCall, fn: "io_uring_enter"}}, Sets: []string{"syscalls"}},
+	IoUringRegisterEventID:     {ID: IoUringRegisterEventID, ID32Bit: sys32io_uring_register, Name: "io_uring_register", Probes: []probe{{event: "io_uring_register", attach: sysCall, fn: "io_uring_register"}}, Sets: []string{"syscalls"}},
+	OpenTreeEventID:            {ID: OpenTreeEventID, ID32Bit: sys32open_tree, Name: "open_tree", Probes: []probe{{event: "open_tree", attach: sysCall, fn: "open_tree"}}, Sets: []string{"syscalls"}},
+	MoveMountEventID:           {ID: MoveMountEventID, ID32Bit: sys32move_mount, Name: "move_mount", Probes: []probe{{event: "move_mount", attach: sysCall, fn: "move_mount"}}, Sets: []string{"default", "syscalls", "fs"}},
+	FsopenEventID:              {ID: FsopenEventID, ID32Bit: sys32fsopen, Name: "fsopen", Probes: []probe{{event: "fsopen", attach: sysCall, fn: "fsopen"}}, Sets: []string{"syscalls", "fs"}},
+	FsconfigEventID:            {ID: FsconfigEventID, ID32Bit: sys32fsconfig, Name: "fsconfig", Probes: []probe{{event: "fsconfig", attach: sysCall, fn: "fsconfig"}}, Sets: []string{"syscalls", "fs"}},
+	FsmountEventID:             {ID: FsmountEventID, ID32Bit: sys32fsmount, Name: "fsmount", Probes: []probe{{event: "fsmount", attach: sysCall, fn: "fsmount"}}, Sets: []string{"syscalls", "fs"}},
+	FspickEventID:              {ID: FspickEventID, ID32Bit: sys32fspick, Name: "fspick", Probes: []probe{{event: "fspick", attach: sysCall, fn: "fspick"}}, Sets: []string{"syscalls", "fs"}},
+	PidfdOpenEventID:           {ID: PidfdOpenEventID, ID32Bit: sys32pidfd_open, Name: "pidfd_open", Probes: []probe{{event: "pidfd_open", attach: sysCall, fn: "pidfd_open"}}, Sets: []string{"syscalls"}},
+	Clone3EventID:              {ID: Clone3EventID, ID32Bit: sys32clone3, Name: "clone3", Probes: []probe{{event: "clone3", attach: sysCall, fn: "clone3"}}, Sets: []string{"default", "syscalls", "proc", "proc_life"}},
+	CloseRangeEventID:          {ID: CloseRangeEventID, ID32Bit: sys32close_range, Name: "close_range", Probes: []probe{{event: "close_range", attach: sysCall, fn: "close_range"}}, Sets: []string{"default", "syscalls", "fs", "fs_file_ops"}},
+	Openat2EventID:             {ID: Openat2EventID, ID32Bit: sys32openat2, Name: "openat2", Probes: []probe{{event: "openat2", attach: sysCall, fn: "openat2"}}, Sets: []string{"default", "syscalls", "fs", "fs_file_ops"}},
+	PidfdGetfdEventID:          {ID: PidfdGetfdEventID, ID32Bit: sys32pidfd_getfd, Name: "pidfd_getfd", Probes: []probe{{event: "pidfd_getfd", attach: sysCall, fn: "pidfd_getfd"}}, Sets: []string{"syscalls"}},
+	Faccessat2EventID:          {ID: Faccessat2EventID, ID32Bit: sys32faccessat2, Name: "faccessat2", Probes: []probe{{event: "faccessat2", attach: sysCall, fn: "faccessat2"}}, Sets: []string{"default", "syscalls", "fs", "fs_file_attr"}},
+	ProcessMadviseEventID:      {ID: ProcessMadviseEventID, ID32Bit: sys32process_madvise, Name: "process_madvise", Probes: []probe{{event: "process_madvise", attach: sysCall, fn: "process_madvise"}}, Sets: []string{"syscalls"}},
+	EpollPwait2EventID:         {ID: EpollPwait2EventID, ID32Bit: sys32epoll_pwait2, Name: "epoll_pwait2", Probes: []probe{{event: "epoll_pwait2", attach: sysCall, fn: "epoll_pwait2"}}, Sets: []string{"syscalls", "fs", "fs_mux_io"}},
 }
 
 // EventsIDToParams is list of the parameters (name and type) used by the events
@@ -648,9 +667,9 @@ var EventsIDToParams = map[int32][]external.ArgMeta{
 	SysfsEventID:               {{Type: "int", Name: "option"}},
 	GetpriorityEventID:         {{Type: "int", Name: "which"}, {Type: "int", Name: "who"}},
 	SetpriorityEventID:         {{Type: "int", Name: "which"}, {Type: "int", Name: "who"}, {Type: "int", Name: "prio"}},
-	SchedSetparamEventID:       {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_param*", Name: "external.ArgMeta"}},
-	SchedGetparamEventID:       {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_param*", Name: "external.ArgMeta"}},
-	SchedSetschedulerEventID:   {{Type: "pid_t", Name: "pid"}, {Type: "int", Name: "policy"}, {Type: "struct sched_param*", Name: "external.ArgMeta"}},
+	SchedSetparamEventID:       {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_param*", Name: "param"}},
+	SchedGetparamEventID:       {{Type: "pid_t", Name: "pid"}, {Type: "struct sched_param*", Name: "param"}},
+	SchedSetschedulerEventID:   {{Type: "pid_t", Name: "pid"}, {Type: "int", Name: "policy"}, {Type: "struct sched_param*", Name: "param"}},
 	SchedGetschedulerEventID:   {{Type: "pid_t", Name: "pid"}},
 	SchedGetPriorityMaxEventID: {{Type: "int", Name: "policy"}},
 	SchedGetPriorityMinEventID: {{Type: "int", Name: "policy"}},
@@ -840,4 +859,22 @@ var EventsIDToParams = map[int32][]external.ArgMeta{
 	VfsWritevEventID:           {{Type: "const char*", Name: "pathname"}, {Type: "dev_t", Name: "dev"}, {Type: "unsigned long", Name: "inode"}, {Type: "unsigned long", Name: "vlen"}, {Type: "off_t", Name: "pos"}},
 	MemProtAlertEventID:        {{Type: "alert_t", Name: "alert"}},
 	SchedProcessExitEventID:    {},
+	PidfdSendSignalEventID:     {{Type: "int", Name: "pidfd"}, {Type: "int", Name: "sig"}, {Type: "siginfo_t*", Name: "info"}, {Type: "unsigned int", Name: "flags"}},
+	IoUringSetupEventID:        {{Type: "unsigned int", Name: "entries"}, {Type: "struct io_uring_params*", Name: "p"}},
+	IoUringEnterEventID:        {{Type: "unsigned int", Name: "fd"}, {Type: "unsigned int", Name: "to_submit"}, {Type: "unsigned int", Name: "min_complete"}, {Type: "unsigned int", Name: "flags"}, {Type: "sigset_t*", Name: "sig"}},
+	IoUringRegisterEventID:     {{Type: "unsigned int", Name: "fd"}, {Type: "unsigned int", Name: "opcode"}, {Type: "void*", Name: "arg"}, {Type: "unsigned int", Name: "nr_args"}},
+	OpenTreeEventID:            {{Type: "int", Name: "dfd"}, {Type: "const char*", Name: "filename"}, {Type: "unsigned int", Name: "flags"}},
+	MoveMountEventID:           {{Type: "int", Name: "from_dfd"}, {Type: "const char*", Name: "from_path"}, {Type: "int", Name: "to_dfd"}, {Type: "const char*", Name: "to_path"}, {Type: "unsigned int", Name: "flags"}},
+	FsopenEventID:              {{Type: "const char*", Name: "fsname"}, {Type: "unsigned int", Name: "flags"}},
+	FsconfigEventID:            {{Type: "int*", Name: "fs_fd"}, {Type: "unsigned int", Name: "cmd"}, {Type: "const char*", Name: "key"}, {Type: "const void*", Name: "value"}, {Type: "int", Name: "aux"}},
+	FsmountEventID:             {{Type: "int", Name: "fsfd"}, {Type: "unsigned int", Name: "flags"}, {Type: "unsigned int", Name: "ms_flags"}},
+	FspickEventID:              {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "unsigned int", Name: "flags"}},
+	PidfdOpenEventID:           {{Type: "pid_t", Name: "pid"}, {Type: "unsigned int", Name: "flags"}},
+	Clone3EventID:              {{Type: "struct clone_args*", Name: "cl_args"}, {Type: "size_t", Name: "size"}},
+	CloseRangeEventID:          {{Type: "unsigned int", Name: "first"}, {Type: "unsigned int", Name: "last"}},
+	Openat2EventID:             {{Type: "int", Name: "dirfd"}, {Type: "const char*", Name: "pathname"}, {Type: "struct open_how*", Name: "how"}, {Type: "size_t", Name: "size"}},
+	PidfdGetfdEventID:          {{Type: "int", Name: "pidfd"}, {Type: "int", Name: "targetfd"}, {Type: "unsigned int", Name: "flags"}},
+	Faccessat2EventID:          {{Type: "int", Name: "fd"}, {Type: "const char*", Name: "path"}, {Type: "int", Name: "mode"}, {Type: "int", Name: "flag"}},
+	ProcessMadviseEventID:      {{Type: "int", Name: "pidfd"}, {Type: "void*", Name: "addr"}, {Type: "size_t", Name: "length"}, {Type: "int", Name: "advice"}, {Type: "unsigned long", Name: "flags"}},
+	EpollPwait2EventID:         {{Type: "int", Name: "fd"}, {Type: "struct epoll_event*", Name: "events"}, {Type: "int", Name: "maxevents"}, {Type: "const struct timespec*", Name: "timeout"}, {Type: "const sigset_t*", Name: "sigset"}},
 }

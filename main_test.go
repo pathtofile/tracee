@@ -132,12 +132,6 @@ func TestPrepareFilter(t *testing.T) {
 			expectedError:  errors.New("invalid filter value: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
 		},
 		{
-			testName:       "invalid uts",
-			filters:        []string{"uts=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-			expectedFilter: tracee.Filter{},
-			expectedError:  errors.New("Filtering strings of length bigger than 32 is not supported: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-		},
-		{
 			testName:       "invalid uid",
 			filters:        []string{"uid=%s"},
 			expectedFilter: tracee.Filter{},
@@ -162,6 +156,30 @@ func TestPrepareFilter(t *testing.T) {
 			expectedError:  errors.New("invalid filter value: 0\t"),
 		},
 		{
+			testName:       "invalid argfilter 1",
+			filters:        []string{"open."},
+			expectedFilter: tracee.Filter{},
+			expectedError:  errors.New("invalid argument filter argument name: "),
+		},
+		{
+			testName:       "invalid argfilter 2",
+			filters:        []string{"blabla.bla"},
+			expectedFilter: tracee.Filter{},
+			expectedError:  errors.New("invalid argument filter event name: blabla"),
+		},
+		{
+			testName:       "invalid argfilter 3",
+			filters:        []string{"blabla.bla=5"},
+			expectedFilter: tracee.Filter{},
+			expectedError:  errors.New("invalid argument filter event name: blabla"),
+		},
+		{
+			testName:       "invalid argfilter 4",
+			filters:        []string{"open.bla=5"},
+			expectedFilter: tracee.Filter{},
+			expectedError:  errors.New("invalid argument filter argument name: bla"),
+		},
+		{
 			testName: "uid=0",
 			filters:  []string{"uid=0"},
 			expectedFilter: tracee.Filter{
@@ -179,37 +197,31 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -232,37 +244,31 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -277,7 +283,6 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				PIDFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
@@ -285,14 +290,12 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{0},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
 					Enabled:  true,
 				},
 				PidNSFilter: &tracee.UintFilter{
@@ -300,22 +303,19 @@ func TestPrepareFilter(t *testing.T) {
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -330,7 +330,6 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				PIDFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
@@ -338,37 +337,32 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{0},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
 					Enabled:  true,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -383,7 +377,6 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				PIDFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
@@ -391,23 +384,18 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{"ls"},
@@ -417,11 +405,11 @@ func TestPrepareFilter(t *testing.T) {
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -436,7 +424,6 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				PIDFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
@@ -444,37 +431,32 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{"deadbeaf"},
 					Enabled:  true,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -497,37 +479,31 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -550,37 +526,31 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
-				ContFilter: &tracee.BoolFilter{
-					Value:   false,
-					Enabled: false,
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
 				},
 			},
 			expectedError: nil,
@@ -595,7 +565,6 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				PIDFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
@@ -603,36 +572,136 @@ func TestPrepareFilter(t *testing.T) {
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
 					Is32Bit:  true,
-					Enabled:  false,
 				},
 				MntNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				PidNSFilter: &tracee.UintFilter{
 					Equal:    []uint64{},
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
-					Enabled:  false,
 				},
 				CommFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				UTSFilter: &tracee.StringFilter{
 					Equal:    []string{},
 					NotEqual: []string{},
-					Enabled:  false,
 				},
 				ContFilter: &tracee.BoolFilter{
 					Value:   true,
+					Enabled: true,
+				},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			testName: "newpidns",
+			filters:  []string{"newpidns"},
+			expectedFilter: tracee.Filter{
+				UIDFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+					Is32Bit:  true,
+				},
+				PIDFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+					Is32Bit:  true,
+				},
+				MntNSFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+				},
+				PidNSFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+				},
+				CommFilter: &tracee.StringFilter{
+					Equal:    []string{},
+					NotEqual: []string{},
+				},
+				UTSFilter: &tracee.StringFilter{
+					Equal:    []string{},
+					NotEqual: []string{},
+				},
+				ContFilter: &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{
+					Value:   true,
+					Enabled: true,
+				},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			testName: "argfilter",
+			filters:  []string{"openat.pathname=/bin/ls,/tmp/tracee", "openat.pathname!=/etc/passwd"},
+			expectedFilter: tracee.Filter{
+				UIDFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+					Is32Bit:  true,
+				},
+				PIDFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+					Is32Bit:  true,
+				},
+				MntNSFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+				},
+				PidNSFilter: &tracee.UintFilter{
+					Equal:    []uint64{},
+					NotEqual: []uint64{},
+					Less:     tracee.LessNotSet,
+					Greater:  tracee.GreaterNotSet,
+				},
+				CommFilter: &tracee.StringFilter{
+					Equal:    []string{},
+					NotEqual: []string{},
+				},
+				UTSFilter: &tracee.StringFilter{
+					Equal:    []string{},
+					NotEqual: []string{},
+				},
+				ContFilter:     &tracee.BoolFilter{},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{
+						257: {
+							"pathname": tracee.ArgFilterVal{
+								Equal:    []string{"/bin/ls", "/tmp/tracee"},
+								NotEqual: []string{"/etc/passwd"},
+							},
+						},
+					},
 					Enabled: true,
 				},
 			},
@@ -663,7 +732,6 @@ func TestPrepareFilter(t *testing.T) {
 					NotEqual: []uint64{},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
 					Enabled:  true,
 				},
 				PidNSFilter: &tracee.UintFilter{
@@ -671,7 +739,6 @@ func TestPrepareFilter(t *testing.T) {
 					NotEqual: []uint64{3},
 					Less:     tracee.LessNotSet,
 					Greater:  tracee.GreaterNotSet,
-					Is32Bit:  false,
 					Enabled:  true,
 				},
 				CommFilter: &tracee.StringFilter{
@@ -688,6 +755,10 @@ func TestPrepareFilter(t *testing.T) {
 					Value:   false,
 					Enabled: true,
 				},
+				NewPidNsFilter: &tracee.BoolFilter{},
+				ArgFilter: &tracee.ArgFilter{
+					Filters: map[int32]map[string]tracee.ArgFilterVal{},
+				},
 			},
 			expectedError: nil,
 		},
@@ -702,6 +773,8 @@ func TestPrepareFilter(t *testing.T) {
 			assert.Equal(t, testcase.expectedFilter.UTSFilter, filter.UTSFilter)
 			assert.Equal(t, testcase.expectedFilter.CommFilter, filter.CommFilter)
 			assert.Equal(t, testcase.expectedFilter.ContFilter, filter.ContFilter)
+			assert.Equal(t, testcase.expectedFilter.NewPidNsFilter, filter.NewPidNsFilter)
+			assert.Equal(t, testcase.expectedFilter.ArgFilter, filter.ArgFilter)
 			assert.Equal(t, testcase.expectedError, err)
 		})
 	}
